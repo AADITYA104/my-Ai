@@ -1,0 +1,45 @@
+# ============================================================================
+#  docker-compose.yml — runs the full agent stack in isolated containers
+# ============================================================================
+#  Usage:
+#    cp .env.example .env   # fill in your real keys
+#    docker compose up -d
+#
+#  Services:
+#    1. agent-gateway: Telegram bot command & control interface
+#    2. agent-cron: Background time-based automation runner
+#    3. agent-audit: On-demand skill memory auditor (via `docker compose run --rm agent-audit`)
+# ============================================================================
+
+version: "3.8"
+
+services:
+  agent-gateway:
+    build: .
+    command: node telegram-gateway.js
+    env_file: .env
+    volumes:
+      - agent-workspace:/app/workspace
+      - agent-memory:/app/agent-memory
+    restart: unless-stopped
+
+  agent-cron:
+    build: .
+    command: node cron-scheduler.js
+    env_file: .env
+    volumes:
+      - agent-workspace:/app/workspace
+      - agent-memory:/app/agent-memory
+    restart: unless-stopped
+
+  agent-audit:
+    build: .
+    command: node autonomous-loop-agent-v4-hardening.js
+    env_file: .env
+    volumes:
+      - agent-memory:/app/agent-memory
+    profiles: ["tools"]
+
+volumes:
+  agent-workspace: # Persisted sandbox directory for FREEZE_DIR
+  agent-memory:    # Persisted plans, progress, and learned skills

@@ -3,8 +3,8 @@
  *  TELEGRAM GATEWAY — talk to your autonomous agent from your phone
  * ============================================================================
  *
- * Wraps autonomous-loop-agent-v3.js (Brain + Skill Memory + Tools) behind
- * a Telegram bot. Send it a goal, it runs the full loop, and streams
+ * Wraps autonomous-loop-agent-v5-native-tools.js (Brain + Skill Memory + Native Tools)
+ * behind a Telegram bot. Send it a goal, it runs the full loop, and streams
  * progress + the final result back into the chat.
  *
  * COMMANDS:
@@ -14,27 +14,13 @@
  *   /stop          — requests the current run to stop after its current step
  *
  * SAFETY NOTES:
- *   - ALLOWED_CHAT_IDS below restricts who can command the agent — without
- *     this, ANYONE who finds your bot can make it run shell commands on
- *     your machine (see v3's terminal_exec). Do not skip this.
- *   - Only one goal runs per chat at a time (a simple in-memory lock) —
- *     prevents two overlapping runs from corrupting agent-memory/ files.
- *
- * DEPENDENCIES:
- *   npm install node-telegram-bot-api
- *
- * SETUP:
- *   1. Talk to @BotFather on Telegram, /newbot, copy the token
- *   2. Get your own numeric chat id by messaging @userinfobot
- *   3. Run:
- *      TELEGRAM_BOT_TOKEN=xxx ALLOWED_CHAT_IDS=123456789 \
- *      ANTHROPIC_API_KEY=xxx FREEZE_DIR=./workspace \
- *      node telegram-gateway.js
+ *   - ALLOWED_CHAT_IDS below restricts who can command the agent.
+ *   - Only one goal runs per chat at a time to prevent file lock corruption.
  * ============================================================================
  */
 
 const TelegramBot = require("node-telegram-bot-api");
-const { runAgent, listSkills } = require("./autonomous-loop-agent-v3");
+const { runAgent, listSkills } = require("./autonomous-loop-agent-v5-native-tools");
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const ALLOWED_CHAT_IDS = (process.env.ALLOWED_CHAT_IDS || "")

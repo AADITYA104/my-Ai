@@ -1,12 +1,17 @@
 {
   "name": "my-ai",
-  "version": "3.1.0",
-  "description": "Autonomous Loop Agent with Skill Memory System, Tool Autonomy, Telegram Gateway, and Cron Scheduler",
-  "main": "autonomous-loop-agent-v3.js",
+  "version": "5.0.0",
+  "description": "Autonomous Loop Agent Suite: Actor-Critic, Skill Memory System, Native Tool Autonomy, Hardening, Telegram Gateway, and Cron Scheduler",
+  "main": "autonomous-loop-agent-v5-native-tools.js",
   "scripts": {
-    "start": "node autonomous-loop-agent-v3.js",
+    "start": "node autonomous-loop-agent-v5-native-tools.js",
+    "agent:reasoning": "node advanced-reasoning-agent.js",
+    "agent:v1": "node autonomous-loop-agent.js",
     "agent:v2": "node autonomous-loop-agent-v2.js",
     "agent:v3": "node autonomous-loop-agent-v3.js",
+    "agent:v4": "node autonomous-loop-agent-v4-hardening.js",
+    "agent:v5": "node autonomous-loop-agent-v5-native-tools.js",
+    "audit": "node autonomous-loop-agent-v4-hardening.js",
     "gateway": "node telegram-gateway.js",
     "scheduler": "node cron-scheduler.js"
   },
@@ -14,12 +19,14 @@
     "ai",
     "agent",
     "autonomous-loop",
+    "actor-critic",
     "skill-memory",
     "tool-autonomy",
     "telegram-bot",
     "cron-scheduler",
     "anthropic",
-    "claude"
+    "claude",
+    "playwright"
   ],
   "author": "AADITYA104",
   "license": "MIT",

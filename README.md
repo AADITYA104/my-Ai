@@ -1,86 +1,64 @@
 # my-Ai 🤖
 
-> **Autonomous Loop Agent** featuring **Skill Memory System**, **Tool Autonomy** (Terminal, Code, Playwright Browser), **Telegram Gateway Interface**, and **Background Cron Scheduler**.
+> **Production-Grade Autonomous Loop Agent Suite** featuring **Actor-Critic Verification**, **Distilled Skill Memory**, **Native Tool Autonomy** (Terminal, Subprocess Code, Playwright Browser), **Telegram Bot Gateway**, **Background Cron Scheduler**, and **Docker Sandboxing**.
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│     YOU (Telegram) ──────── OR ──────── Cron (Schedule) │
-└────────────────────┬────────────────────┬───────────────┘
-                     ▼                    ▼
-           telegram-gateway.js    cron-scheduler.js
-                     │                    │
-                     └─────────┬──────────┘
-                               ▼
-                autonomous-loop-agent-v3.js  (Brain)
-             (Bootstrap → Plan → Actor → Critic → Loop)
+┌─────────────────────────────────────────────────────────────┐
+│                 INTERFACES & TRIGGERS                       │
+│     Telegram Gateway (/goal)   │   Cron Scheduler (0 8 * * *)│
+└──────────────────────────────┬──────────────────────────────┘
                                │
-            ┌──────────────────┼──────────────────┐
-            ▼                  ▼                  ▼
-      Skill Memory       Tool Autonomy       Guardrails
-     (agent-memory/      (terminal, code,   (FREEZE_DIR,
-      skills/*.md)          browser)        confirmation,
-                                            tokens, retries)
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│            AUTONOMOUS LOOP AGENT CORE (Brain)               │
+│                                                             │
+│  1. Bootstrap Planner ──> plan.json (Atomic subtasks)       │
+│  2. Disk Memory Context ──> memory.md & progress.json       │
+│  3. Pre-Task Skill Match ──> agent-memory/skills/*.md       │
+│  4. Multi-Step Actor ──> Tools (Terminal, Code, Browser)    │
+│  5. Independent Critic ──> PASS / FAIL                      │
+│  6. Skill Distillation ──> Compress winning recipe to .md   │
+│  7. Loop Advance ──> Next subtask until goal fulfilled      │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     SAFETY & ISOLATION                      │
+│  • Destructive Command Guard (rm -rf, DROP TABLE, sudo)     │
+│  • FREEZE_DIR Filesystem Scoping & Non-Root Execution       │
+│  • Token Budgeting & Circuit Breakers                       │
+│  • Telegram ALLOWED_CHAT_IDS Gate                           │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🌟 Key Features
+## 📁 Repository Suite
 
-1. **Actor-Critic Autonomous Loop**
-   - Bootstraps goals into verifiable subtasks (`plan.json`).
-   - Executes subtasks iteratively with independent critic verification.
-   - Preserves state across iterations (`progress.json`, `memory.md`).
-
-2. **Skill Memory System**
-   - **Relevance check before execution**: Looks up previously solved patterns in `agent-memory/skills/*.md`.
-   - **Distills winning strategies**: When a subtask passes verification, distills concise steps, when-to-use conditions, and gotchas into a reusable `.md` skill.
-   - **Continuous learning**: Solves familiar problems faster and more reliably over time.
-
-3. **Tool Autonomy & Safety**
-   - **`terminal_exec`**: Shell command execution with `DESTRUCTIVE_PATTERNS` filtering and interactive confirmation gates (`rm -rf`, `DROP TABLE`, `sudo`, `git push --force`, etc.).
-   - **`code_exec`**: Subprocess execution for JS and Python snippets with timeout enforcement.
-   - **`browser_control`**: Headless browser automation (navigation, screenshots, clicking, text extraction) powered by Playwright.
-   - **`FREEZE_DIR` sandboxing**: Confines filesystem writes to a scoped directory.
-
-4. **Telegram Gateway (`telegram-gateway.js`)**
-   - Control your agent directly from Telegram.
-   - Commands: `/goal <text>`, `/status`, `/skills`, `/stop`.
-   - Live throttled console log streaming.
-   - `ALLOWED_CHAT_IDS` authorization guardrail.
-   - Graceful `/stop` cancellation wired directly into the execution loop.
-
-5. **Cron Scheduler (`cron-scheduler.js`)**
-   - Time-based background recurring automation (e.g. daily news digests, automated audits, lead scraping).
-   - Dedicated run logging in `agent-memory/cron-run-log.jsonl`.
-   - Automatic Telegram status alerts and failure reports.
+| File | Purpose |
+| :--- | :--- |
+| **[`AI-Agent-Loop-Engineering-Guide.md`](file:///c:/Users/devmu/Downloads/my%20Ai/AI-Agent-Loop-Engineering-Guide.md)** | Deep architectural guide on Actor-Critic loops, skill distillation, and tool safety. |
+| **[`advanced-reasoning-agent.js`](file:///c:/Users/devmu/Downloads/my%20Ai/advanced-reasoning-agent.js)** | Foundational Actor-Critic reasoning engine with iterative critique loops. |
+| **[`autonomous-loop-agent.js`](file:///c:/Users/devmu/Downloads/my%20Ai/autonomous-loop-agent.js)** | **v1**: Self-bootstrapping planner decomposing goals into verifiable subtasks on disk. |
+| **[`autonomous-loop-agent-v2.js`](file:///c:/Users/devmu/Downloads/my%20Ai/autonomous-loop-agent-v2.js)** | **v2**: Skill Memory System that matches and saves distilled `.md` recipes. |
+| **[`autonomous-loop-agent-v3.js`](file:///c:/Users/devmu/Downloads/my%20Ai/autonomous-loop-agent-v3.js)** | **v3**: Tool Autonomy with `terminal_exec`, `code_exec`, and Playwright `browser_control`. |
+| **[`autonomous-loop-agent-v4-hardening.js`](file:///c:/Users/devmu/Downloads/my%20Ai/autonomous-loop-agent-v4-hardening.js)** | **v4**: Hardening layer with skill usage tracking and contradiction audit reports. |
+| **[`autonomous-loop-agent-v5-native-tools.js`](file:///c:/Users/devmu/Downloads/my%20Ai/autonomous-loop-agent-v5-native-tools.js)** | **v5 (Latest)**: Production Anthropic native JSON `tools` schema with multi-step execution. |
+| **[`telegram-gateway.js`](file:///c:/Users/devmu/Downloads/my%20Ai/telegram-gateway.js)** | Telegram Bot Gateway with progress streaming, `/goal`, `/status`, `/skills`, and `/stop`. |
+| **[`cron-scheduler.js`](file:///c:/Users/devmu/Downloads/my%20Ai/cron-scheduler.js)** | Headless recurring cron automation with JSONL run logging and Telegram alert reporting. |
+| **[`Dockerfile`](file:///c:/Users/devmu/Downloads/my%20Ai/Dockerfile)** & **[`docker-compose.yml`](file:///c:/Users/devmu/Downloads/my%20Ai/docker-compose.yml)** | Fully containerized non-root sandboxed execution environment. |
 
 ---
 
-## 📁 Repository Structure
-
-```text
-my-Ai/
-├── autonomous-loop-agent-v2.js   # Agent loop + Skill Memory System
-├── autonomous-loop-agent-v3.js   # Agent loop + Skill Memory + Tool Autonomy + Cancellation
-├── telegram-gateway.js           # Telegram Bot interface with streaming & controls
-├── cron-scheduler.js             # Background cron automation runner & alerts
-├── package.json                  # Dependencies & npm scripts
-├── .gitignore                    # Ignored directories, env files & logs
-├── .env.example                  # Environment configuration template
-└── README.md                     # Documentation
-```
-
----
-
-## 🚀 Quick Setup
+## 🚀 Quick Start
 
 ### 1. Prerequisites
 - **Node.js**: v18+
 - **Anthropic API Key**
-- *(Optional for Telegram)* Telegram Bot Token from [@BotFather](https://t.me/BotFather)
+- *(Optional)* Telegram Bot Token & Chat ID (from [@BotFather](https://t.me/BotFather))
+- *(Optional)* Docker & Docker Compose
 
-### 2. Install Dependencies
-
+### 2. Installation
 ```bash
 git clone https://github.com/AADITYA104/my-Ai.git
 cd my-Ai
@@ -88,16 +66,14 @@ npm install
 npx playwright install chromium
 ```
 
-### 3. Configure Environment Variables
-
-Create `.env` or set environment variables:
-
+### 3. Environment Configuration
+Copy `.env.example` to `.env` and configure:
 ```bash
-# Required for agent operations
+# Required
 export ANTHROPIC_API_KEY="sk-ant-..."
 export FREEZE_DIR="./workspace"
 
-# Optional: Required for Telegram Gateway & Scheduler
+# Optional: Telegram & Notifications
 export TELEGRAM_BOT_TOKEN="123456:ABC-DEF..."
 export ALLOWED_CHAT_IDS="123456789"
 export REPORT_CHAT_ID="123456789"
@@ -107,39 +83,57 @@ export REPORT_CHAT_ID="123456789"
 
 ## 🛠️ Usage
 
-### Run CLI Autonomous Loop (v3)
+### Run Latest Native Tool Agent (v5)
 ```bash
-node autonomous-loop-agent-v3.js "Fetch top tech news headlines and save a markdown summary in report.md"
+node autonomous-loop-agent-v5-native-tools.js "Research top 5 AI papers today and write a markdown summary to papers.md"
 ```
 
-### Run Telegram Gateway
+### Run Telegram Bot Gateway
 ```bash
 npm run gateway
-# or: node telegram-gateway.js
 ```
-*In Telegram:*
-- `/goal Scrape today's AI news and write a summary`
-- `/skills`
-- `/status`
-- `/stop`
+*Commands in Telegram:*
+- `/goal <description>` — Starts agent on a goal.
+- `/status` — Displays active run state.
+- `/skills` — Lists all learned distilled skills.
+- `/stop` — Gracefully stops current execution.
 
-### Run Cron Scheduler (Background Daemon)
+### Run Background Cron Scheduler
 ```bash
 npm run scheduler
-# or: node cron-scheduler.js
-```
-*To test a scheduled job immediately:*
-```bash
+# Or trigger a job immediately for testing:
 node cron-scheduler.js --run-now daily-market-news
+```
+
+### Run Skill Library Audit
+```bash
+npm run audit
 ```
 
 ---
 
-## 🔒 Production Safety Warnings
+## 🐳 Docker Deployment
 
-- **Never leave `ALLOWED_CHAT_IDS` empty** when running Telegram Gateway.
-- Always scope filesystem changes with `FREEZE_DIR`.
-- For production workloads with terminal and code execution, run inside an isolated container (Docker, VM, or devcontainer).
+Run the complete sandboxed stack:
+
+```bash
+# Start Telegram Gateway & Cron Scheduler
+docker compose up -d
+
+# View live gateway logs
+docker compose logs -f agent-gateway
+
+# Run on-demand skill audit in container
+docker compose run --rm agent-audit
+```
+
+---
+
+## 🔒 Safety & Best Practices
+
+1. **Always set `ALLOWED_CHAT_IDS`**: Never allow public unauthenticated access to the Telegram bot.
+2. **Use `FREEZE_DIR`**: Constrains file modifications and screenshots within the specified workspace.
+3. **Container Sandboxing**: Run agents executing real shell commands inside Docker containers or virtual machines.
 
 ---
 

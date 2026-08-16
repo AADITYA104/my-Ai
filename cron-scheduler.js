@@ -11,28 +11,15 @@
  * DESIGN NOTE — why this file is separate from the Telegram gateway:
  *   The gateway is EVENT-driven (you send /goal, it runs once).
  *   This scheduler is TIME-driven (runs whether or not you're watching).
- *   They share the same brain (autonomous-loop-agent-v3.js) but have very
- *   different failure modes — a scheduled job failing silently at 3 AM is
- *   a much bigger problem than an interactive command failing, so this file
- *   has its own dedicated error reporting and a run-history log.
- *
- * CONFIG: edit the SCHEDULE array below — each entry is one recurring job.
- *
- * DEPENDENCIES:
- *   npm install node-cron node-telegram-bot-api
- *
- * RUN (typically as a long-lived background process — pm2, systemd, or
- * `screen`/`tmux`, NOT just `node file.js` in a terminal you'll close):
- *   ANTHROPIC_API_KEY=xxx FREEZE_DIR=./workspace \
- *   TELEGRAM_BOT_TOKEN=xxx REPORT_CHAT_ID=123456789 \
- *   node cron-scheduler.js
+ *   They share the same brain (autonomous-loop-agent-v5-native-tools.js)
+ *   with dedicated run-history logging in agent-memory/cron-run-log.jsonl.
  * ============================================================================
  */
 
 const fs = require("fs");
 const path = require("path");
 const cron = require("node-cron");
-const { runAgent } = require("./autonomous-loop-agent-v3");
+const { runAgent } = require("./autonomous-loop-agent-v5-native-tools");
 
 const RUN_LOG = path.join(__dirname, "agent-memory", "cron-run-log.jsonl");
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -41,7 +28,7 @@ const REPORT_CHAT_ID = process.env.REPORT_CHAT_ID;
 let bot = null;
 if (TELEGRAM_BOT_TOKEN && REPORT_CHAT_ID) {
   const TelegramBot = require("node-telegram-bot-api");
-  bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: false }); // send-only, no polling
+  bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: false });
 }
 
 // ---------------------------------------------------------------------------
@@ -61,13 +48,6 @@ const SCHEDULE = [
     goal: "Read agent-memory/skills/ and write a short human-readable digest of all learned skills to reports/skills-digest.md",
     enabled: true,
   },
-  // Add more jobs here, e.g.:
-  // {
-  //   name: "lead-scraping",
-  //   cronExpr: "0 10 * * 1-5", // weekdays at 10 AM
-  //   goal: "Search for businesses in [category] without a website and log leads to reports/leads.csv",
-  //   enabled: false,
-  // },
 ];
 
 // ---------------------------------------------------------------------------
@@ -130,8 +110,7 @@ console.log("\nCron scheduler running. Jobs will fire on their configured schedu
 console.log("Keep this process alive with pm2/systemd/screen/tmux — it does nothing if killed.\n");
 
 // ---------------------------------------------------------------------------
-// Optional: run a job immediately on startup for testing
-//   node cron-scheduler.js --run-now daily-market-news
+// CLI Trigger Flag: node cron-scheduler.js --run-now daily-market-news
 // ---------------------------------------------------------------------------
 const runNowFlagIndex = process.argv.indexOf("--run-now");
 if (runNowFlagIndex !== -1) {
