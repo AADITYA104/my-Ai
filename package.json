@@ -1,0 +1,25 @@
+{
+  "name": "my-ai",
+  "version": "3.0.0",
+  "description": "Autonomous Loop Agent with Skill Memory System and Tool Autonomy (Terminal, Code Exec, Playwright Browser)",
+  "main": "autonomous-loop-agent-v3.js",
+  "scripts": {
+    "start": "node autonomous-loop-agent-v3.js",
+    "agent:v2": "node autonomous-loop-agent-v2.js",
+    "agent:v3": "node autonomous-loop-agent-v3.js"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "autonomous-loop",
+    "skill-memory",
+    "tool-autonomy",
+    "anthropic",
+    "claude"
+  ],
+  "author": "AADITYA104",
+  "license": "MIT",
+  "dependencies": {
+    "playwright": "^1.49.1"
+  }
+}

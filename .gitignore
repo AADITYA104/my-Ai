@@ -1,0 +1,9 @@
+node_modules/
+.env
+.env.local
+agent-memory/
+workspace/
+_tmp_exec_*
+screenshot*.png
+.DS_Store
+Thumbs.db
