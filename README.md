@@ -1,29 +1,58 @@
 # my-Ai 🤖
 
-> **Autonomous Loop Agent** with **Skill Memory System** and **Tool Autonomy** (Terminal Execution, Code Execution, and Browser Automation with Playwright).
+> **Autonomous Loop Agent** featuring **Skill Memory System**, **Tool Autonomy** (Terminal, Code, Playwright Browser), **Telegram Gateway Interface**, and **Background Cron Scheduler**.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│     YOU (Telegram) ──────── OR ──────── Cron (Schedule) │
+└────────────────────┬────────────────────┬───────────────┘
+                     ▼                    ▼
+           telegram-gateway.js    cron-scheduler.js
+                     │                    │
+                     └─────────┬──────────┘
+                               ▼
+                autonomous-loop-agent-v3.js  (Brain)
+             (Bootstrap → Plan → Actor → Critic → Loop)
+                               │
+            ┌──────────────────┼──────────────────┐
+            ▼                  ▼                  ▼
+      Skill Memory       Tool Autonomy       Guardrails
+     (agent-memory/      (terminal, code,   (FREEZE_DIR,
+      skills/*.md)          browser)        confirmation,
+                                            tokens, retries)
+```
 
 ---
 
-## 🌟 Highlights
+## 🌟 Key Features
 
-1. **Autonomous Loop (Actor-Critic)**
+1. **Actor-Critic Autonomous Loop**
    - Bootstraps goals into verifiable subtasks (`plan.json`).
-   - Executes subtasks with actor-critic verification before marking them complete.
+   - Executes subtasks iteratively with independent critic verification.
    - Preserves state across iterations (`progress.json`, `memory.md`).
 
-2. **Skill Memory System (v2+)**
-   - **Pre-execution check**: Before executing any subtask, checks `agent-memory/skills/*.md` using cheap relevance matching.
-   - **Post-verification learning**: Distills successful subtask completions into concise, reusable markdown skill guides.
-   - **Compound improvement**: Familiar tasks execute faster and with higher precision over time.
+2. **Skill Memory System**
+   - **Relevance check before execution**: Looks up previously solved patterns in `agent-memory/skills/*.md`.
+   - **Distills winning strategies**: When a subtask passes verification, distills concise steps, when-to-use conditions, and gotchas into a reusable `.md` skill.
+   - **Continuous learning**: Solves familiar problems faster and more reliably over time.
 
-3. **Tool Autonomy & Safety Layer (v3)**
-   - **Terminal Execution** (`terminal_exec`): Runs shell commands with guardrails.
-   - **Code Runner** (`code_exec`): Executes isolated JavaScript or Python code snippets via subprocess.
-   - **Browser Control** (`browser_control`): Navigates, captures screenshots, clicks, and extracts DOM text using Playwright.
-   - **Safety & Guardrails**:
-     - `DESTRUCTIVE_PATTERNS` blocks destructive shell commands (`rm -rf`, `sudo`, `DROP TABLE`, `git push --force`, fork bombs, etc.).
-     - Interactive human-in-the-loop terminal prompt (`yes`/`no`) for dangerous commands.
-     - `FREEZE_DIR` environment variable to sandbox file operations to a specific directory.
+3. **Tool Autonomy & Safety**
+   - **`terminal_exec`**: Shell command execution with `DESTRUCTIVE_PATTERNS` filtering and interactive confirmation gates (`rm -rf`, `DROP TABLE`, `sudo`, `git push --force`, etc.).
+   - **`code_exec`**: Subprocess execution for JS and Python snippets with timeout enforcement.
+   - **`browser_control`**: Headless browser automation (navigation, screenshots, clicking, text extraction) powered by Playwright.
+   - **`FREEZE_DIR` sandboxing**: Confines filesystem writes to a scoped directory.
+
+4. **Telegram Gateway (`telegram-gateway.js`)**
+   - Control your agent directly from Telegram.
+   - Commands: `/goal <text>`, `/status`, `/skills`, `/stop`.
+   - Live throttled console log streaming.
+   - `ALLOWED_CHAT_IDS` authorization guardrail.
+   - Graceful `/stop` cancellation wired directly into the execution loop.
+
+5. **Cron Scheduler (`cron-scheduler.js`)**
+   - Time-based background recurring automation (e.g. daily news digests, automated audits, lead scraping).
+   - Dedicated run logging in `agent-memory/cron-run-log.jsonl`.
+   - Automatic Telegram status alerts and failure reports.
 
 ---
 
@@ -31,23 +60,26 @@
 
 ```text
 my-Ai/
-├── autonomous-loop-agent-v2.js   # Autonomous agent with Skill Memory
-├── autonomous-loop-agent-v3.js   # Autonomous agent with Skill Memory + Tool Autonomy
-├── package.json                  # Node.js manifest and script runners
-├── .gitignore                    # Ignored artifacts, credentials, node_modules
+├── autonomous-loop-agent-v2.js   # Agent loop + Skill Memory System
+├── autonomous-loop-agent-v3.js   # Agent loop + Skill Memory + Tool Autonomy + Cancellation
+├── telegram-gateway.js           # Telegram Bot interface with streaming & controls
+├── cron-scheduler.js             # Background cron automation runner & alerts
+├── package.json                  # Dependencies & npm scripts
+├── .gitignore                    # Ignored directories, env files & logs
 ├── .env.example                  # Environment configuration template
 └── README.md                     # Documentation
 ```
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Setup
 
 ### 1. Prerequisites
-- **Node.js**: v18+ (with native `fetch` support)
+- **Node.js**: v18+
 - **Anthropic API Key**
+- *(Optional for Telegram)* Telegram Bot Token from [@BotFather](https://t.me/BotFather)
 
-### 2. Installation
+### 2. Install Dependencies
 
 ```bash
 git clone https://github.com/AADITYA104/my-Ai.git
@@ -56,41 +88,58 @@ npm install
 npx playwright install chromium
 ```
 
-### 3. Configure Environment
+### 3. Configure Environment Variables
 
-Copy `.env.example` or set environment variables:
+Create `.env` or set environment variables:
 
 ```bash
-# Linux / macOS
-export ANTHROPIC_API_KEY="your_api_key"
+# Required for agent operations
+export ANTHROPIC_API_KEY="sk-ant-..."
 export FREEZE_DIR="./workspace"
 
-# Windows PowerShell
-$env:ANTHROPIC_API_KEY="your_api_key"
-$env:FREEZE_DIR="./workspace"
+# Optional: Required for Telegram Gateway & Scheduler
+export TELEGRAM_BOT_TOKEN="123456:ABC-DEF..."
+export ALLOWED_CHAT_IDS="123456789"
+export REPORT_CHAT_ID="123456789"
 ```
 
 ---
 
 ## 🛠️ Usage
 
-### Run v2 (Skill Memory System)
+### Run CLI Autonomous Loop (v3)
 ```bash
-node autonomous-loop-agent-v2.js "Analyze this repository and document all exported functions in DOCS.md"
+node autonomous-loop-agent-v3.js "Fetch top tech news headlines and save a markdown summary in report.md"
 ```
 
-### Run v3 (Full Tool Autonomy)
+### Run Telegram Gateway
 ```bash
-node autonomous-loop-agent-v3.js "Fetch top tech news headlines from Hacker News and save a markdown report in report.md"
+npm run gateway
+# or: node telegram-gateway.js
+```
+*In Telegram:*
+- `/goal Scrape today's AI news and write a summary`
+- `/skills`
+- `/status`
+- `/stop`
+
+### Run Cron Scheduler (Background Daemon)
+```bash
+npm run scheduler
+# or: node cron-scheduler.js
+```
+*To test a scheduled job immediately:*
+```bash
+node cron-scheduler.js --run-now daily-market-news
 ```
 
 ---
 
-## 🔒 Safety & Best Practices
+## 🔒 Production Safety Warnings
 
-- **Never disable safety gates** when running on machines with sensitive production keys or root access.
-- Always configure `FREEZE_DIR` to limit the agent's file access scope.
-- We recommend executing autonomous agents inside a containerized environment (e.g., Docker, Firecracker microVM, or isolated devcontainer).
+- **Never leave `ALLOWED_CHAT_IDS` empty** when running Telegram Gateway.
+- Always scope filesystem changes with `FREEZE_DIR`.
+- For production workloads with terminal and code execution, run inside an isolated container (Docker, VM, or devcontainer).
 
 ---
 

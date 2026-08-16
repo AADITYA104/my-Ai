@@ -1,12 +1,14 @@
 {
   "name": "my-ai",
-  "version": "3.0.0",
-  "description": "Autonomous Loop Agent with Skill Memory System and Tool Autonomy (Terminal, Code Exec, Playwright Browser)",
+  "version": "3.1.0",
+  "description": "Autonomous Loop Agent with Skill Memory System, Tool Autonomy, Telegram Gateway, and Cron Scheduler",
   "main": "autonomous-loop-agent-v3.js",
   "scripts": {
     "start": "node autonomous-loop-agent-v3.js",
     "agent:v2": "node autonomous-loop-agent-v2.js",
-    "agent:v3": "node autonomous-loop-agent-v3.js"
+    "agent:v3": "node autonomous-loop-agent-v3.js",
+    "gateway": "node telegram-gateway.js",
+    "scheduler": "node cron-scheduler.js"
   },
   "keywords": [
     "ai",
@@ -14,12 +16,16 @@
     "autonomous-loop",
     "skill-memory",
     "tool-autonomy",
+    "telegram-bot",
+    "cron-scheduler",
     "anthropic",
     "claude"
   ],
   "author": "AADITYA104",
   "license": "MIT",
   "dependencies": {
+    "node-cron": "^3.0.3",
+    "node-telegram-bot-api": "^0.66.0",
     "playwright": "^1.49.1"
   }
 }

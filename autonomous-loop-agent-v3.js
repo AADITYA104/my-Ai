@@ -8,6 +8,7 @@
  *   1. terminal_exec  — runs shell commands, WITH a destructive-command guard
  *   2. code_exec       — runs a JS/Python snippet in an isolated subprocess
  *   3. browser_control — navigate/screenshot/click via Playwright
+ *   4. cancellation    — supports graceful stop requests from Telegram Gateway / Scheduler
  *
  * ⚠️ SAFETY — READ BEFORE RUNNING THIS ANYWHERE NEAR PRODUCTION DATA:
  *   Giving an LLM the ability to run arbitrary shell commands is genuinely
@@ -22,7 +23,8 @@
  *       never directly on a machine with real credentials/production access
  *
  * DEPENDENCIES:
- *   npm install playwright && npx playwright install chromium
+ *   npm install playwright node-telegram-bot-api node-cron
+ *   npx playwright install chromium
  *
  * RUN:
  *   ANTHROPIC_API_KEY=xxx FREEZE_DIR=./workspace node autonomous-loop-agent-v3.js "goal"
@@ -288,6 +290,10 @@ async function saveSkill(subtask, successfulApproach) {
   console.log(`  [SKILL SAVED] ${slug}.md`);
 }
 
+function pruneSkills() {
+  console.log("[pruneSkills] Not yet automated — review agent-memory/skills/ to prune obsolete skills.");
+}
+
 // ---------------------------------------------------------------------------
 // Claude API
 // ---------------------------------------------------------------------------
@@ -348,12 +354,16 @@ async function handleToolCall(toolName, input) {
   return tool ? await tool.run(input) : `Unknown tool: ${toolName}`;
 }
 
-async function runSubtaskToCompletion(subtask) {
+async function runSubtaskToCompletion(subtask, controlOptions = {}) {
   const matchedSkill = await findRelevantSkill(subtask.description);
   if (matchedSkill) console.log(`  [SKILL MATCHED] "${matchedSkill.title}"`);
 
   let attempts = 0, lastResult = null;
   while (attempts < CONFIG.MAX_SUBTASK_RETRIES) {
+    if (controlOptions.isStopRequested && controlOptions.isStopRequested()) {
+      return { success: false, result: lastResult, reason: "Stop requested by user" };
+    }
+
     attempts++;
     const memoryContext = readMemory();
     let actorOutput = await actorStep(subtask, memoryContext, matchedSkill);
@@ -381,7 +391,7 @@ async function runSubtaskToCompletion(subtask) {
   return { success: false, result: lastResult, reason: "max subtask retries exceeded" };
 }
 
-async function runAgent(goal) {
+async function runAgent(goal, controlOptions = {}) {
   ensureDirs();
   if (FREEZE_DIR) {
     fs.mkdirSync(FREEZE_DIR, { recursive: true });
@@ -395,6 +405,11 @@ async function runAgent(goal) {
 
   let outerIteration = 0;
   while (outerIteration < CONFIG.MAX_OUTER_ITERATIONS) {
+    if (controlOptions.isStopRequested && controlOptions.isStopRequested()) {
+      console.log("\n🛑 Execution stopped by request.");
+      return { success: false, reason: "Stopped by user request", iterations: outerIteration, tokensUsed: tokensUsedSoFar };
+    }
+
     outerIteration++;
     plan = readPlan();
     const progress = readProgress();
@@ -410,7 +425,7 @@ async function runAgent(goal) {
       return { success: false, reason: "Token budget exhausted", iterations: outerIteration };
     }
 
-    const outcome = await runSubtaskToCompletion(remaining[0]);
+    const outcome = await runSubtaskToCompletion(remaining[0], controlOptions);
     if (outcome.success) {
       progress.completedSubtasks.push(remaining[0].id);
       writeProgress(progress);
@@ -418,6 +433,9 @@ async function runAgent(goal) {
     } else {
       noProgressStreak++;
       appendMemory(`Subtask ${remaining[0].id} failed: ${outcome.reason}`);
+      if (outcome.reason === "Stop requested by user") {
+        return { success: false, reason: "Stopped by user request", iterations: outerIteration, tokensUsed: tokensUsedSoFar };
+      }
       if (noProgressStreak >= CONFIG.NO_PROGRESS_LIMIT) {
         return { success: false, reason: "No progress — stopped.", iterations: outerIteration };
       }
@@ -426,7 +444,7 @@ async function runAgent(goal) {
   return { success: false, reason: "Max outer iterations reached", iterations: outerIteration };
 }
 
-module.exports = { runAgent, listSkills };
+module.exports = { runAgent, listSkills, pruneSkills };
 
 if (require.main === module) {
   (async () => {
