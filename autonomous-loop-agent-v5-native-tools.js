@@ -1,30 +1,30 @@
 /**
  * ============================================================================
- *  AUTONOMOUS LOOP AGENT — v5: NATIVE TOOL CALLING + HARDENED LOOP
+ *  AUTONOMOUS LOOP AGENT — v5: NATIVE TOOLS + SKILL MEMORY + RAG VECTOR MEMORY
  * ============================================================================
  *
- * NEW IN v5 (builds on v1-v4):
+ * FULL FEATURE SET:
  *
  *   1. NATIVE ANTHROPIC TOOL CALLING:
- *      Replaces string prefix matching (TOOL:write_file:...) with Anthropic's
- *      native JSON schema tools (`tools: [...]` and `tool_use` / `tool_result`
- *      content blocks). This eliminates syntax formatting errors and allows
- *      structured JSON parameters for all tools.
+ *      Anthropic JSON Schema tools (`tools: [...]` and `tool_use` / `tool_result`).
  *
  *   2. MULTI-STEP ACTOR EXECUTION:
- *      The Actor can make multiple sequential tool calls within a single subtask
- *      before returning its final verified result.
+ *      Actor can sequentially execute multiple tools per subtask until completion.
  *
- *   3. SKILL MEMORY + USAGE TRACKING INTEGRATED:
- *      Automatically matches relevant skill guides before subtasks, records
- *      usage stats in skill-usage.json, and distills successful approaches.
+ *   3. RAG + VECTOR KNOWLEDGE BASE (NEW):
+ *      Searches `agent-memory/vector-store.json` using Voyage AI semantic search
+ *      to inject relevant document context into the Actor prompt.
  *
- *   4. HARDENED SAFETY & STOP CONTROL:
- *      Destructive pattern blocklist, FREEZE_DIR scoping, token limits,
- *      iteration caps, and real-time stop cancellation support.
+ *   4. SKILL MEMORY & USAGE TRACKING:
+ *      Distills passing tasks into reusable skill guides (`agent-memory/skills/`)
+ *      and tracks frequency in `skill-usage.json`.
+ *
+ *   5. HARDENED SAFETY & STOP CONTROL:
+ *      Destructive command blocklist, interactive terminal prompt,
+ *      `FREEZE_DIR` sandboxing, and real-time stop cancellation support.
  *
  * RUN:
- *   ANTHROPIC_API_KEY=xxx FREEZE_DIR=./workspace node autonomous-loop-agent-v5-native-tools.js "your goal"
+ *   ANTHROPIC_API_KEY=xxx VOYAGE_API_KEY=xxx node autonomous-loop-agent-v5-native-tools.js "goal"
  * ============================================================================
  */
 
@@ -32,6 +32,7 @@ const fs = require("fs");
 const path = require("path");
 const { execSync, spawnSync } = require("child_process");
 const readline = require("readline");
+const { buildRagContext, rememberConversationTurn } = require("./rag-memory");
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
@@ -83,7 +84,7 @@ function isWithinFreezeDir(targetPath) {
 }
 
 // ---------------------------------------------------------------------------
-// NATIVE ANTHROPIC TOOLS DEFINITION & HANDLERS
+// NATIVE TOOL DEFINITIONS & HANDLERS
 // ---------------------------------------------------------------------------
 const TOOL_DEFINITIONS = [
   {
@@ -335,10 +336,15 @@ async function saveSkill(subtask, successfulApproach) {
   fs.writeFileSync(filePath, raw);
   appendMemory(`Learned new skill: "${slug}".`);
   console.log(`  [SKILL SAVED] ${slug}.md`);
+
+  // Also index into vector memory if Voyage API is available
+  try {
+    await rememberConversationTurn(`Skill learned: ${slug}\n${raw}`, ["skill", slug]);
+  } catch {}
 }
 
 // ---------------------------------------------------------------------------
-// ANTHROPIC API CLIENT (Supports tools parameter)
+// ANTHROPIC API CLIENT
 // ---------------------------------------------------------------------------
 async function callClaudeWithTools(messages, system, tools = null) {
   const payload = {
@@ -394,14 +400,15 @@ REASON: <one line explanation>`;
 }
 
 // ---------------------------------------------------------------------------
-// NATIVE TOOL ACTOR LOOP
+// NATIVE TOOL ACTOR LOOP WITH RAG & SKILL INJECTION
 // ---------------------------------------------------------------------------
-async function runActorWithNativeTools(subtask, memoryContext, matchedSkill, controlOptions) {
+async function runActorWithNativeTools(subtask, memoryContext, matchedSkill, ragContext, controlOptions) {
   const skillBlock = matchedSkill ? `\nRELEVANT SKILL DOCUMENTATION:\n${matchedSkill.content}\n` : "";
   const system = `You are an execution agent. Complete the subtask using available tools.
 Prior Learnings:
 ${memoryContext || "(none yet)"}
 ${skillBlock}
+${ragContext}
 When done, provide a final comprehensive summary of the result.`;
 
   const messages = [
@@ -426,13 +433,11 @@ When done, provide a final comprehensive summary of the result.`;
 
     const toolUseCalls = contentBlocks.filter((b) => b.type === "tool_use");
 
-    // If no tool calls were made, return final text content
     if (toolUseCalls.length === 0) {
       const textBlock = contentBlocks.find((b) => b.type === "text");
       return textBlock ? textBlock.text : "[No output produced]";
     }
 
-    // Execute each tool use call and collect results
     const toolResults = [];
     for (const call of toolUseCalls) {
       console.log(`  [TOOL EXEC] ${call.name}(${JSON.stringify(call.input).slice(0, 100)})`);
@@ -457,6 +462,12 @@ async function runSubtaskToCompletion(subtask, controlOptions = {}) {
   const matchedSkill = await findRelevantSkill(subtask.description);
   if (matchedSkill) console.log(`  [SKILL MATCHED] "${matchedSkill.title}"`);
 
+  let ragContext = "";
+  try {
+    ragContext = await buildRagContext(subtask.description, 3);
+    if (ragContext) console.log(`  [RAG MATCHED] Injected relevant knowledge chunks.`);
+  } catch {}
+
   let attempts = 0, lastResult = null;
   while (attempts < CONFIG.MAX_SUBTASK_RETRIES) {
     if (controlOptions.isStopRequested?.()) {
@@ -465,7 +476,7 @@ async function runSubtaskToCompletion(subtask, controlOptions = {}) {
 
     attempts++;
     const memoryContext = readMemory();
-    const result = await runActorWithNativeTools(subtask, memoryContext, matchedSkill, controlOptions);
+    const result = await runActorWithNativeTools(subtask, memoryContext, matchedSkill, ragContext, controlOptions);
     lastResult = result;
 
     const verdict = await criticStep(subtask, result);

@@ -1,6 +1,6 @@
 # my-Ai 🤖
 
-> **Production-Grade Autonomous Loop Agent Suite** featuring **Actor-Critic Verification**, **Distilled Skill Memory**, **Native Tool Autonomy** (Terminal, Subprocess Code, Playwright Browser), **Telegram Bot Gateway**, **Background Cron Scheduler**, and **Docker Sandboxing**.
+> **Production-Grade Autonomous Loop Agent Suite** featuring **12-Pillar Advanced Architecture**: Actor-Critic Verification, Distilled Skill Memory, RAG Vector Memory, Multi-Agent Collaboration, Session State Management, Native Tool Autonomy (Terminal, Subprocess Code, Playwright Browser), Telegram Bot Gateway, Background Cron Scheduler, and Docker Sandboxing.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -14,11 +14,12 @@
 │                                                             │
 │  1. Bootstrap Planner ──> plan.json (Atomic subtasks)       │
 │  2. Disk Memory Context ──> memory.md & progress.json       │
-│  3. Pre-Task Skill Match ──> agent-memory/skills/*.md       │
-│  4. Multi-Step Actor ──> Tools (Terminal, Code, Browser)    │
-│  5. Independent Critic ──> PASS / FAIL                      │
-│  6. Skill Distillation ──> Compress winning recipe to .md   │
-│  7. Loop Advance ──> Next subtask until goal fulfilled      │
+│  3. RAG Knowledge Retrieval ──> Voyage AI Vector Store      │
+│  4. Pre-Task Skill Match ──> agent-memory/skills/*.md       │
+│  5. Multi-Step Actor ──> Native Tools (Terminal, Code, Web) │
+│  6. Independent Critic ──> PASS / FAIL                      │
+│  7. Skill Distillation ──> Compress winning recipe to .md   │
+│  8. Loop Advance ──> Next subtask until goal fulfilled      │
 └──────────────────────────────┬──────────────────────────────┘
                                │
                                ▼
@@ -33,32 +34,48 @@
 
 ---
 
+## 🏛️ 12-Pillar Agent Architecture Status
+
+| Pillar | Implementation | Status |
+| :--- | :--- | :---: |
+| **1. Memory & Context** | Flat disk memory (`memory.md`) + Vector memory with Voyage AI embeddings (`rag-memory.js`). | ✅ Complete |
+| **2. Tool Use / Function Calling** | Native Anthropic JSON schema `tools` API + sandboxed terminal, code runner, and Playwright browser. | ✅ Complete |
+| **3. RAG (Documents & PDFs)** | Semantic chunking with overlap + PDF/text parsing + cosine similarity search (`rag-memory.js`). | ✅ Complete |
+| **4. Multi-Step Reasoning** | Self-bootstrapping planner + multi-step Actor + strict independent Critic verification loop. | ✅ Complete |
+| **5. Multi-Agent System** | Specialist collaboration team: Architect, Researcher, Coder, and Security Auditor (`multi-agent-system.js`). | ✅ Complete |
+| **6. Prompt Engineering** | Dynamic role-based system prompts, few-shot distilled skill injections, and structured output parsing. | ✅ Complete |
+| **7. Streaming & Real-Time** | Throttled console progress streaming to Telegram bot gateway (`telegram-gateway.js`). | ✅ Complete |
+| **8. State & Session Management** | Multi-turn user session tracking, history compression, and state persistence (`session-manager.js`). | ✅ Complete |
+| **9. Guardrails & Safety** | `DESTRUCTIVE_PATTERNS` regex filter + human confirmation gate + `FREEZE_DIR` sandboxing + token caps. | ✅ Complete |
+| **10. Evaluation & Monitoring** | Advisory skill library contradiction audit report (`skill-audit-report.md`) + cron JSONL run logs. | ✅ Complete |
+| **11. Personalization** | Per-user profiles with language, verbosity, and coding style preferences (`session-manager.js`). | ✅ Complete |
+| **12. Autonomous Capabilities** | Self-correcting loop until success + Hermes-style compound skill memory distillation. | ✅ Complete |
+
+---
+
 ## 📁 Repository Suite
 
 | File | Purpose |
 | :--- | :--- |
-| **[`AI-Agent-Loop-Engineering-Guide.md`](file:///c:/Users/devmu/Downloads/my%20Ai/AI-Agent-Loop-Engineering-Guide.md)** | Deep architectural guide on Actor-Critic loops, skill distillation, and tool safety. |
-| **[`advanced-reasoning-agent.js`](file:///c:/Users/devmu/Downloads/my%20Ai/advanced-reasoning-agent.js)** | Foundational Actor-Critic reasoning engine with iterative critique loops. |
-| **[`autonomous-loop-agent.js`](file:///c:/Users/devmu/Downloads/my%20Ai/autonomous-loop-agent.js)** | **v1**: Self-bootstrapping planner decomposing goals into verifiable subtasks on disk. |
-| **[`autonomous-loop-agent-v2.js`](file:///c:/Users/devmu/Downloads/my%20Ai/autonomous-loop-agent-v2.js)** | **v2**: Skill Memory System that matches and saves distilled `.md` recipes. |
-| **[`autonomous-loop-agent-v3.js`](file:///c:/Users/devmu/Downloads/my%20Ai/autonomous-loop-agent-v3.js)** | **v3**: Tool Autonomy with `terminal_exec`, `code_exec`, and Playwright `browser_control`. |
+| **[`AI-Agent-Loop-Engineering-Guide.md`](file:///c:/Users/devmu/Downloads/my%20Ai/AI-Agent-Loop-Engineering-Guide.md)** | Architectural deep-dive on Actor-Critic, Skill Distillation, RAG, and Safety. |
+| **[`rag-memory.js`](file:///c:/Users/devmu/Downloads/my%20Ai/rag-memory.js)** | **RAG & Vector Memory**: Voyage AI embeddings, PDF/text ingestion, and semantic retrieval. |
+| **[`multi-agent-system.js`](file:///c:/Users/devmu/Downloads/my%20Ai/multi-agent-system.js)** | **Multi-Agent Orchestration**: Architect, Researcher, Coder, and Security Auditor team pipeline. |
+| **[`session-manager.js`](file:///c:/Users/devmu/Downloads/my%20Ai/session-manager.js)** | **State & Personalization**: Multi-turn sessions, context compression, and user profile management. |
+| **[`autonomous-loop-agent-v5-native-tools.js`](file:///c:/Users/devmu/Downloads/my%20Ai/autonomous-loop-agent-v5-native-tools.js)** | **v5 (Flagship)**: Anthropic Native Tool Calling + RAG Vector Context + Skill Memory + Multi-Step Tool Loop. |
 | **[`autonomous-loop-agent-v4-hardening.js`](file:///c:/Users/devmu/Downloads/my%20Ai/autonomous-loop-agent-v4-hardening.js)** | **v4**: Hardening layer with skill usage tracking and contradiction audit reports. |
-| **[`autonomous-loop-agent-v5-native-tools.js`](file:///c:/Users/devmu/Downloads/my%20Ai/autonomous-loop-agent-v5-native-tools.js)** | **v5 (Latest)**: Production Anthropic native JSON `tools` schema with multi-step execution. |
+| **[`autonomous-loop-agent-v3.js`](file:///c:/Users/devmu/Downloads/my%20Ai/autonomous-loop-agent-v3.js)** | **v3**: Tool Autonomy with `terminal_exec`, `code_exec`, and Playwright `browser_control`. |
+| **[`autonomous-loop-agent-v2.js`](file:///c:/Users/devmu/Downloads/my%20Ai/autonomous-loop-agent-v2.js)** | **v2**: Distilled Skill Memory System (`agent-memory/skills/`). |
+| **[`autonomous-loop-agent.js`](file:///c:/Users/devmu/Downloads/my%20Ai/autonomous-loop-agent.js)** | **v1**: Self-bootstrapping planner decomposing goals into verifiable subtasks. |
+| **[`advanced-reasoning-agent.js`](file:///c:/Users/devmu/Downloads/my%20Ai/advanced-reasoning-agent.js)** | Foundational Actor-Critic critique loop. |
 | **[`telegram-gateway.js`](file:///c:/Users/devmu/Downloads/my%20Ai/telegram-gateway.js)** | Telegram Bot Gateway with progress streaming, `/goal`, `/status`, `/skills`, and `/stop`. |
-| **[`cron-scheduler.js`](file:///c:/Users/devmu/Downloads/my%20Ai/cron-scheduler.js)** | Headless recurring cron automation with JSONL run logging and Telegram alert reporting. |
+| **[`cron-scheduler.js`](file:///c:/Users/devmu/Downloads/my%20Ai/cron-scheduler.js)** | Headless recurring cron automation with JSONL run logging and Telegram alerts. |
 | **[`Dockerfile`](file:///c:/Users/devmu/Downloads/my%20Ai/Dockerfile)** & **[`docker-compose.yml`](file:///c:/Users/devmu/Downloads/my%20Ai/docker-compose.yml)** | Fully containerized non-root sandboxed execution environment. |
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. Prerequisites
-- **Node.js**: v18+
-- **Anthropic API Key**
-- *(Optional)* Telegram Bot Token & Chat ID (from [@BotFather](https://t.me/BotFather))
-- *(Optional)* Docker & Docker Compose
-
-### 2. Installation
+### 1. Installation
 ```bash
 git clone https://github.com/AADITYA104/my-Ai.git
 cd my-Ai
@@ -66,74 +83,40 @@ npm install
 npx playwright install chromium
 ```
 
-### 3. Environment Configuration
-Copy `.env.example` to `.env` and configure:
+### 2. Configure Environment
+Copy `.env.example` to `.env`:
 ```bash
-# Required
 export ANTHROPIC_API_KEY="sk-ant-..."
+export VOYAGE_API_KEY="pa-..."
 export FREEZE_DIR="./workspace"
-
-# Optional: Telegram & Notifications
 export TELEGRAM_BOT_TOKEN="123456:ABC-DEF..."
 export ALLOWED_CHAT_IDS="123456789"
-export REPORT_CHAT_ID="123456789"
 ```
 
 ---
 
-## 🛠️ Usage
+## 🛠️ Usage Examples
 
-### Run Latest Native Tool Agent (v5)
+### 1. Ingest Documents into RAG Knowledge Base
 ```bash
-node autonomous-loop-agent-v5-native-tools.js "Research top 5 AI papers today and write a markdown summary to papers.md"
+node rag-memory.js ingest ./docs/spec.pdf
+node rag-memory.js search "how does attendance tracking work"
 ```
 
-### Run Telegram Bot Gateway
+### 2. Run Multi-Agent Collaboration Pipeline
+```bash
+npm run multi-agent "Build a token bucket rate limiter with Redis backend"
+```
+
+### 3. Run Autonomous Loop Agent with RAG & Tools (v5)
+```bash
+npm start "Analyze the uploaded spec and generate an implementation plan in PLAN.md"
+```
+
+### 4. Run Telegram Gateway
 ```bash
 npm run gateway
 ```
-*Commands in Telegram:*
-- `/goal <description>` — Starts agent on a goal.
-- `/status` — Displays active run state.
-- `/skills` — Lists all learned distilled skills.
-- `/stop` — Gracefully stops current execution.
-
-### Run Background Cron Scheduler
-```bash
-npm run scheduler
-# Or trigger a job immediately for testing:
-node cron-scheduler.js --run-now daily-market-news
-```
-
-### Run Skill Library Audit
-```bash
-npm run audit
-```
-
----
-
-## 🐳 Docker Deployment
-
-Run the complete sandboxed stack:
-
-```bash
-# Start Telegram Gateway & Cron Scheduler
-docker compose up -d
-
-# View live gateway logs
-docker compose logs -f agent-gateway
-
-# Run on-demand skill audit in container
-docker compose run --rm agent-audit
-```
-
----
-
-## 🔒 Safety & Best Practices
-
-1. **Always set `ALLOWED_CHAT_IDS`**: Never allow public unauthenticated access to the Telegram bot.
-2. **Use `FREEZE_DIR`**: Constrains file modifications and screenshots within the specified workspace.
-3. **Container Sandboxing**: Run agents executing real shell commands inside Docker containers or virtual machines.
 
 ---
 

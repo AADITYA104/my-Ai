@@ -1,7 +1,7 @@
 {
   "name": "my-ai",
-  "version": "5.0.0",
-  "description": "Autonomous Loop Agent Suite: Actor-Critic, Skill Memory System, Native Tool Autonomy, Hardening, Telegram Gateway, and Cron Scheduler",
+  "version": "5.1.0",
+  "description": "Production-Grade Autonomous Loop Agent Suite: Actor-Critic, Distilled Skill Memory, RAG Vector Memory, Multi-Agent Collaboration, Session State Management, Native Tool Autonomy, Hardening, Telegram Gateway, and Cron Scheduler",
   "main": "autonomous-loop-agent-v5-native-tools.js",
   "scripts": {
     "start": "node autonomous-loop-agent-v5-native-tools.js",
@@ -11,6 +11,10 @@
     "agent:v3": "node autonomous-loop-agent-v3.js",
     "agent:v4": "node autonomous-loop-agent-v4-hardening.js",
     "agent:v5": "node autonomous-loop-agent-v5-native-tools.js",
+    "rag:ingest": "node rag-memory.js ingest",
+    "rag:search": "node rag-memory.js search",
+    "multi-agent": "node multi-agent-system.js",
+    "session": "node session-manager.js",
     "audit": "node autonomous-loop-agent-v4-hardening.js",
     "gateway": "node telegram-gateway.js",
     "scheduler": "node cron-scheduler.js"
@@ -21,6 +25,11 @@
     "autonomous-loop",
     "actor-critic",
     "skill-memory",
+    "rag",
+    "vector-memory",
+    "voyage-ai",
+    "multi-agent",
+    "session-management",
     "tool-autonomy",
     "telegram-bot",
     "cron-scheduler",
@@ -33,6 +42,7 @@
   "dependencies": {
     "node-cron": "^3.0.3",
     "node-telegram-bot-api": "^0.66.0",
+    "pdf-parse": "^1.1.1",
     "playwright": "^1.49.1"
   }
 }
