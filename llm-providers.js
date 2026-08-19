@@ -1,6 +1,7 @@
 /**
  * ============================================================================
- *  LLM PROVIDERS - RESILIENT MULTI-PROVIDER ADAPTER WITH AUTO-FAILOVER
+ *  LLM PROVIDERS - DUAL-ENGINE SMART TASK ROUTER & AUTO-FAILOVER
+ *  Divides tasks between Fast Tier-1 (sub-second) and Deep Tier-2 (reasoning).
  * ============================================================================
  */
 "use strict";
@@ -27,19 +28,16 @@ try {
 } catch (_) {}
 
 function detectProvider() {
-  return process.env.LLM_PROVIDER || "ollama-local-first";
+  return "dual-engine-smart-router";
 }
 
 // ---------------------------------------------------------------------------
-// 1. GOOGLE GEMINI ADAPTER WITH AUTO-FAILOVER CASCADE
+// 1. GOOGLE GEMINI DUAL-ENGINE CASCADE
 // ---------------------------------------------------------------------------
-const GEMINI_MODELS_CASCADE = [
-  "gemini-3.5-flash-lite", // 800ms ultra-fast & resilient
-  "gemini-flash-latest",   // 1.4s reliable fallback
-  "gemini-3.5-flash"
-];
+const TIER1_FAST_MODELS = ["gemini-3.5-flash-lite", "gemini-flash-latest"];
+const TIER2_DEEP_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite"];
 
-async function callGemini(messages, system, tools) {
+async function callGemini(messages, system, tools, complexity = "fast") {
   const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GOOGLE_API_KEY missing");
 
@@ -61,7 +59,10 @@ async function callGemini(messages, system, tools) {
 
   const payload = {
     contents,
-    generationConfig: { temperature: 0.3, maxOutputTokens: 2500 }
+    generationConfig: {
+      temperature: complexity === "deep" ? 0.2 : 0.4,
+      maxOutputTokens: complexity === "deep" ? 4000 : 1500
+    }
   };
 
   if (system) {
@@ -78,8 +79,10 @@ async function callGemini(messages, system, tools) {
     }];
   }
 
+  const candidateModels = complexity === "deep" ? TIER2_DEEP_MODELS : TIER1_FAST_MODELS;
   let lastError = null;
-  for (const model of GEMINI_MODELS_CASCADE) {
+
+  for (const model of candidateModels) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
       const res = await fetch(url, {
@@ -107,154 +110,81 @@ async function callGemini(messages, system, tools) {
         }
       }
       if (standardizedBlocks.length === 0 && candidate?.finishReason) {
-        standardizedBlocks.push({ type: "text", text: "Yes Boss, processing completed." });
+        standardizedBlocks.push({ type: "text", text: "Yes Boss, task processed." });
       }
       return {
         content: standardizedBlocks,
-        modelUsed: "gemini-" + model,
+        modelUsed: `gemini-${model} (${complexity})`,
         usage: { input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0 }
       };
     } catch (err) {
       lastError = err;
     }
   }
-  throw lastError || new Error("Gemini failed.");
+  throw lastError || new Error("Gemini cascade failed.");
 }
 
 // ---------------------------------------------------------------------------
-// 4. OLLAMA LOCAL ADAPTER (Primary for Ultron-Core)
+// 2. LOCAL OLLAMA ENGINE (Offline Priority)
 // ---------------------------------------------------------------------------
-function toOllamaTools(tools) {
-  if (!tools || tools.length === 0) return undefined;
-  return tools.map(t => ({
-    type: "function",
-    function: {
-      name: t.name,
-      description: t.description || "",
-      parameters: t.input_schema || { type: "object", properties: {} }
-    }
-  }));
-}
+async function callOllama(messages, system) {
+  const host = process.env.OLLAMA_HOST || "http://localhost:11434";
+  const model = process.env.OLLAMA_MODEL || "ultron-core";
+  const url = `${host}/api/chat`;
 
-function normalizeToolArgs(args) {
-  if (!args) return {};
-  if (typeof args === "string") {
-    try { return JSON.parse(args); } catch (_) { return { input: args }; }
-  }
-  return args;
-}
-
-function extractJsonObject(text) {
-  if (!text || typeof text !== "string") return null;
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = fenced ? fenced[1] : text;
-  const start = candidate.indexOf("{");
-  const end = candidate.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) return null;
-  try { return JSON.parse(candidate.slice(start, end + 1)); } catch (_) { return null; }
-}
-
-function normalizeOllamaMessages(messages, system, hasTools) {
   const ollamaMessages = [];
-  let systemText = system || "";
-  if (hasTools) {
-    systemText += "\n\nTool use rules:\n- Prefer native tool calls when available.\n- If native tool calls are not available, respond ONLY as JSON: {\"tool_calls\":[{\"name\":\"tool_name\",\"arguments\":{}}]}.\n- When the task is complete, respond with normal text ending in DONE, DONE_WITH_CONCERNS, BLOCKED, or NEEDS_CONTEXT.";
-  }
-  if (systemText) ollamaMessages.push({ role: "system", content: systemText });
+  if (system) ollamaMessages.push({ role: "system", content: system });
 
   for (const m of messages) {
     if (typeof m.content === "string") {
       ollamaMessages.push({ role: m.role, content: m.content });
-    } else if (Array.isArray(m.content)) {
-      const toolResults = m.content.filter(p => p.type === "tool_result");
-      const textParts = m.content.filter(p => p.type === "text").map(p => p.text);
-      const toolUses = m.content.filter(p => p.type === "tool_use");
-      if (toolResults.length > 0) {
-        ollamaMessages.push({
-          role: "user",
-          content: "Tool results:\n" + toolResults.map(r => `${r.tool_name || r.name || "tool"}: ${r.content}`).join("\n")
-        });
-      } else if (toolUses.length > 0) {
-        ollamaMessages.push({
-          role: "assistant",
-          content: JSON.stringify({ tool_calls: toolUses.map(t => ({ name: t.name, arguments: t.input || {} })) })
-        });
-      } else if (textParts.length > 0) {
-        ollamaMessages.push({ role: m.role, content: textParts.join("\n") });
-      }
     }
   }
-  return ollamaMessages;
-}
-
-async function callOllama(messages, system, tools = null) {
-  const host = process.env.OLLAMA_HOST || "http://localhost:11434";
-  const model = process.env.OLLAMA_MODEL || "ultron-core";
-  const url = `${host}/api/chat`;
-  const ollamaMessages = normalizeOllamaMessages(messages, system, !!(tools && tools.length));
-  const payload = { model, messages: ollamaMessages, stream: false };
-  const ollamaTools = toOllamaTools(tools);
-  if (ollamaTools) payload.tools = ollamaTools;
 
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
+    body: JSON.stringify({ model, messages: ollamaMessages, stream: false })
   });
 
-  if (!res.ok) {
-    throw new Error(`Ollama Error (${res.status})`);
-  }
+  if (!res.ok) throw new Error(`Ollama Error (${res.status})`);
 
   const data = await res.json();
-  const content = [];
-  const nativeToolCalls = data.message?.tool_calls || [];
-  for (const call of nativeToolCalls) {
-    content.push({
-      type: "tool_use",
-      id: "ollama_" + Math.random().toString(36).slice(2, 10),
-      name: call.function?.name || call.name,
-      input: normalizeToolArgs(call.function?.arguments || call.arguments)
-    });
-  }
-
-  const text = data.message?.content || "";
-  const parsed = extractJsonObject(text);
-  const jsonToolCalls = Array.isArray(parsed?.tool_calls) ? parsed.tool_calls : [];
-  if (content.length === 0 && jsonToolCalls.length > 0) {
-    for (const call of jsonToolCalls) {
-      content.push({
-        type: "tool_use",
-        id: "json_" + Math.random().toString(36).slice(2, 10),
-        name: call.name,
-        input: normalizeToolArgs(call.arguments || call.input)
-      });
-    }
-  }
-  if (content.length === 0 || text.replace(/\s/g, "")) {
-    content.unshift({ type: "text", text });
-  }
-
   return {
-    content,
+    content: [{ type: "text", text: data.message?.content || "" }],
     modelUsed: `local-ollama (${model})`,
     usage: { input_tokens: data.prompt_eval_count || 0, output_tokens: data.eval_count || 0 }
   };
 }
 
 // ---------------------------------------------------------------------------
-// UNIVERSAL DISPATCHER (Local First, API Fallback)
+// UNIVERSAL SMART DISPATCHER (Task Division Engine)
 // ---------------------------------------------------------------------------
 async function callUniversalLLM(messages, system, tools = null) {
-  // First try Local Ollama (The user's Qwen 27B model)
+  // Determine Task Complexity
+  let isHeavyTask = false;
+  if (tools && tools.length > 0) isHeavyTask = true;
+  const lastMsg = messages[messages.length - 1]?.content || "";
+  if (typeof lastMsg === "string") {
+    if (/(code|build|refactor|fix|research|analyze|physics|math|audit|file|create|write)/i.test(lastMsg)) {
+      isHeavyTask = true;
+    }
+  }
+
+  // If simple conversational query -> Try local Ollama first, fallback to Fast Tier-1
+  if (!isHeavyTask) {
+    try {
+      return await callOllama(messages, system);
+    } catch (_) {
+      return await callGemini(messages, system, tools, "fast");
+    }
+  }
+
+  // If heavy reasoning/coding task -> Use Deep Tier-2 Gemini or specialized agent
   try {
-    console.log(`[LLM DISPATCH] Trying local Ollama (${process.env.OLLAMA_MODEL || "ultron-core"})...`);
-    const localRes = await callOllama(messages, system, tools);
-    return localRes;
-  } catch (err) {
-    console.warn(`[LLM DISPATCH] Local Ollama failed or not available (${err.message}). Falling back to Gemini API...`);
-    // If Ollama fails, or requires tools, fallback to Gemini
-    return await callGemini(messages, system, tools);
+    return await callGemini(messages, system, tools, "deep");
+  } catch (_) {
+    return await callGemini(messages, system, tools, "fast");
   }
 }
 
