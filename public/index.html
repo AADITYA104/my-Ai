@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ULTRON // Neural Core AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Three.js (Optimized WebGL) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <!-- MediaPipe Hands & Camera Utils -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body class="cinematic-mode">
+
+  <!-- Fullscreen 3D Canvas -->
+  <div id="canvas-container"></div>
+
+  <!-- Minimal Sleek Top Holographic Status (No Clunky Dashboard) -->
+  <header class="hologram-nav">
+    <div class="brand">
+      <div class="core-indicator"></div>
+      <div class="brand-text">
+        <span class="title">ULTRON</span>
+        <span class="sub" id="status-sub">NEURAL SYSTEM ONLINE // READY FOR BOSS</span>
+      </div>
+    </div>
+
+    <div class="quick-actions">
+      <button id="mic-btn" class="holo-pill active" title="Click or speak 'Ultron'">
+        <span class="icon">🎙️</span>
+        <span class="lbl" id="mic-lbl">LISTENING</span>
+      </button>
+      <button id="cam-btn" class="holo-pill" title="Toggle Hand Gesture Tracking">
+        <span class="icon">📷</span>
+        <span class="lbl" id="cam-lbl">GESTURES</span>
+      </button>
+      <button id="chat-btn" class="holo-pill" title="Toggle Chat Console">
+        <span class="icon">💬</span>
+        <span class="lbl">CHAT</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Central Subtitle / Speech Bubble HUD -->
+  <div class="holographic-speech-center">
+    <div class="wave-visualizer" id="wave-bars">
+      <div class="wbar"></div><div class="wbar"></div><div class="wbar"></div><div class="wbar"></div>
+      <div class="wbar"></div><div class="wbar"></div><div class="wbar"></div><div class="wbar"></div>
+      <div class="wbar"></div><div class="wbar"></div><div class="wbar"></div><div class="wbar"></div>
+    </div>
+    <div class="speech-text" id="live-speech-subtitle">"Say 'Ultron' or click anywhere to command, Boss..."</div>
+  </div>
+
+  <!-- Minimal Transparent Gesture Camera Feed (Floating Bottom Right) -->
+  <div id="gesture-pip" class="gesture-pip-box hidden">
+    <div class="pip-label">GESTURE SENSOR</div>
+    <div class="video-holder">
+      <video id="webcam-video" playsinline></video>
+      <canvas id="hand-canvas"></canvas>
+    </div>
+    <div class="pip-tip" id="pip-tip">Show hand to rotate & scale</div>
+  </div>
+
+  <!-- Floating Hologram Chat Overlay (Clean & Futuristic) -->
+  <div id="holo-chat-overlay" class="holo-chat-overlay hidden">
+    <div class="chat-glass-panel">
+      <div class="chat-glass-header">
+        <div class="title-group">
+          <span class="dot-cyan"></span>
+          <span>ULTRON // NEURAL CONSOLE</span>
+        </div>
+        <button id="close-chat" class="close-icon">&times;</button>
+      </div>
+
+      <div class="chat-logs" id="chat-logs">
+        <div class="chat-bubble ultron">
+          <span class="tag">ULTRON</span>
+          <p>Greetings Boss. Neural sphere active. What are your orders today?</p>
+        </div>
+      </div>
+
+      <form id="chat-input-form" class="chat-input-bar">
+        <input type="text" id="chat-input-field" placeholder="Type an order or ask a question in any language, Boss..." autocomplete="off" />
+        <button type="submit" class="transmit-btn">SEND</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="ultron-core.js"></script>
+  <script src="gesture-tracker.js"></script>
+  <script src="voice-engine.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

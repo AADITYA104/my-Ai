@@ -26,6 +26,8 @@ const path = require("path");
 
 const VOYAGE_API_KEY = process.env.VOYAGE_API_KEY;
 const VOYAGE_MODEL = process.env.VOYAGE_MODEL || "voyage-3-lite";
+const OLLAMA_HOST = process.env.OLLAMA_HOST || "http://localhost:11434";
+const OLLAMA_EMBED_MODEL = process.env.OLLAMA_EMBED_MODEL || "";
 const STORE_PATH = path.join(__dirname, "agent-memory", "vector-store.json");
 const CHUNK_SIZE = 800; // characters per chunk
 const CHUNK_OVERLAP = 100; // overlap between sequential chunks
@@ -34,8 +36,24 @@ const CHUNK_OVERLAP = 100; // overlap between sequential chunks
 // EMBEDDING API CLIENT
 // ---------------------------------------------------------------------------
 async function embed(texts) {
+  if (!VOYAGE_API_KEY && OLLAMA_EMBED_MODEL) {
+    const items = Array.isArray(texts) ? texts : [texts];
+    const vectors = [];
+    for (const input of items) {
+      const res = await fetch(`${OLLAMA_HOST}/api/embeddings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: OLLAMA_EMBED_MODEL, prompt: input }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.embedding) throw new Error(`Ollama embedding failed: ${JSON.stringify(data)}`);
+      vectors.push(data.embedding);
+    }
+    return vectors;
+  }
+
   if (!VOYAGE_API_KEY) {
-    throw new Error("VOYAGE_API_KEY is not set. Get a free API key at https://www.voyageai.com");
+    return null;
   }
 
   const res = await fetch("https://api.voyageai.com/v1/embeddings", {
@@ -112,7 +130,7 @@ async function ingestText(text, metadata = {}) {
     store.push({
       id: `${metadata.source || "doc"}-${Date.now()}-${i}`,
       text: chunk,
-      embedding: embeddings[i],
+      embedding: embeddings ? embeddings[i] : null,
       metadata: { ...metadata, chunkIndex: i, ingestedAt: new Date().toISOString() },
     });
   });
@@ -157,12 +175,12 @@ async function rememberConversationTurn(summary, tags = []) {
 async function semanticSearch(query, topK = 5) {
   const store = loadStore();
   if (store.length === 0) return [];
-  if (!VOYAGE_API_KEY) {
-    console.warn("⚠️ VOYAGE_API_KEY not set — skipping semantic search.");
-    return [];
+  if (!VOYAGE_API_KEY && !OLLAMA_EMBED_MODEL) {
+    return lexicalSearch(store, query, topK);
   }
 
   const [queryEmbedding] = await embed([query]);
+  if (!queryEmbedding) return lexicalSearch(store, query, topK);
 
   const scored = store.map((entry) => ({
     ...entry,
@@ -173,11 +191,21 @@ async function semanticSearch(query, topK = 5) {
   return scored.slice(0, topK).map(({ text, metadata, score }) => ({ text, metadata, score }));
 }
 
+function lexicalSearch(store, query, topK) {
+  const terms = String(query).toLowerCase().split(/[^a-z0-9_./:-]+/).filter(t => t.length > 2);
+  const scored = store.map((entry) => {
+    const haystack = String(entry.text || "").toLowerCase();
+    const score = terms.reduce((sum, term) => sum + (haystack.includes(term) ? 1 : 0), 0) / Math.max(terms.length, 1);
+    return { ...entry, score };
+  }).filter(entry => entry.score > 0);
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, topK).map(({ text, metadata, score }) => ({ text, metadata, score }));
+}
+
 // ---------------------------------------------------------------------------
 // CONTEXT INJECTION BUILDER FOR ACTOR
 // ---------------------------------------------------------------------------
 async function buildRagContext(taskDescription, topK = 3) {
-  if (!VOYAGE_API_KEY) return "";
   try {
     const results = await semanticSearch(taskDescription, topK);
     if (results.length === 0) return "";

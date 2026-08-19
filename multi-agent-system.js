@@ -16,22 +16,11 @@
  */
 
 const { buildRagContext } = require("./rag-memory");
+const { callUniversalLLM } = require("./llm-providers");
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
-
-async function callClaude(messages, system) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({ model: MODEL, max_tokens: 2500, system, messages }),
-  });
-  const data = await res.json();
-  return data.content?.[0]?.text || "";
+async function callSpecialist(messages, system) {
+  const data = await callUniversalLLM(messages, system);
+  return (data.content || []).map(part => part.text || "").join("\n").trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -45,7 +34,7 @@ Include:
 1. Core Design Patterns
 2. Component Breakdown
 3. Edge Cases to Account For`;
-  return await callClaude([{ role: "user", content: `Goal: ${goal}` }], system);
+  return await callSpecialist([{ role: "user", content: `Goal: ${goal}` }], system);
 }
 
 async function runResearcher(goal, blueprint) {
@@ -58,7 +47,7 @@ async function runResearcher(goal, blueprint) {
   const system = `You are a Lead Research Specialist. Provide technical best practices, algorithm choices, and relevant context.
 ${ragContext ? `\nRetrieved Knowledge Base:\n${ragContext}` : ""}`;
 
-  return await callClaude(
+  return await callSpecialist(
     [
       {
         role: "user",
@@ -72,7 +61,7 @@ ${ragContext ? `\nRetrieved Knowledge Base:\n${ragContext}` : ""}`;
 async function runCoder(goal, blueprint, research) {
   console.log("\n💻 [CODER AGENT] Generating production implementation...");
   const system = `You are a Senior Full-Stack Engineer. Write clean, complete, robust production-ready code with comments.`;
-  return await callClaude(
+  return await callSpecialist(
     [
       {
         role: "user",
@@ -90,7 +79,7 @@ async function runAuditor(goal, code) {
 2. Memory leaks / concurrency race conditions
 3. Missing edge case handling
 Respond with VERDICT: PASS or FAIL, followed by a prioritized audit report.`;
-  return await callClaude(
+  return await callSpecialist(
     [
       {
         role: "user",
