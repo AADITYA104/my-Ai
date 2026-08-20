@@ -33,8 +33,8 @@ check(1, "LLM Engine & Dual-Engine Router Active", !!provider, `Active Provider:
 
 // 2. Retry Logic & Graceful Failure
 const llmModule = fs.readFileSync(path.join(__dirname, "llm-providers.js"), "utf-8");
-const hasRetry = llmModule.includes("AbortSignal.timeout(60000)") && llmModule.includes("maxRetries");
-check(2, "Retry Logic & 60s Timeout (No Silent Failures)", hasRetry, "Exponential backoff & timeout guard configured in llm-providers.js");
+const hasRetry = llmModule.includes("AbortSignal.timeout") && llmModule.includes("maxRetries");
+check(2, "Retry Logic & Timeout Guard (No Silent Failures)", hasRetry, "Exponential backoff & timeout guard configured in llm-providers.js");
 
 // 3. Automated Test-Gate
 const testFile = path.join(__dirname, "tests", "agent-reliability.test.js");

@@ -7,3 +7,6 @@ _tmp_exec_*
 screenshot*.png
 .DS_Store
 Thumbs.db
+*.gguf
+*.zip
+extracted_packages/
