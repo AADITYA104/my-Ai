@@ -59,7 +59,7 @@ if (chatForm) {
     appendChatEntry("user", query);
 
     if (typeof sendQueryToUltron === "function") {
-      await sendQueryToUltron(query, true);
+      await sendQueryToUltron(query, true, true);
     }
   });
 }

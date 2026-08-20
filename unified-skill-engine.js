@@ -47,8 +47,8 @@ class UnifiedSkillEngine {
     const scored = this.skills.map(skill => {
       let score = 0;
       const sName = skill.name.toLowerCase();
-      const sDesc = skill.description.toLowerCase();
-      const sCat = skill.category.toLowerCase();
+      const sDesc = (skill.description || "").toLowerCase();
+      const sCat = (skill.category || "").toLowerCase();
 
       // Exact name match
       if (lowerTask.includes(sName)) score += 15;
@@ -73,6 +73,22 @@ class UnifiedSkillEngine {
       .filter(s => s.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, topK);
+  }
+
+  /**
+   * Alias for routeTask
+   */
+  findMatchingSkills(taskDescription, topK = 3) {
+    return this.routeTask(taskDescription, topK);
+  }
+
+  /**
+   * Get specific skill by exact name
+   */
+  getSkillByName(name) {
+    if (!name) return null;
+    const lower = name.toLowerCase();
+    return this.skills.find(s => s.name.toLowerCase() === lower) || null;
   }
 
   /**

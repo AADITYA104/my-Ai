@@ -130,7 +130,7 @@ async function processHeardVoice(transcript) {
   }
 }
 
-async function sendQueryToUltron(promptText, speakBack = true) {
+async function sendQueryToUltron(promptText, speakBack = true, alreadyAppendedUser = false) {
   try {
     if (speechSubtitle) speechSubtitle.innerText = "Processing order, Boss...";
 
@@ -148,7 +148,9 @@ async function sendQueryToUltron(promptText, speakBack = true) {
     }
 
     if (window.appendChatEntry) {
-      window.appendChatEntry("user", promptText);
+      if (!alreadyAppendedUser) {
+        window.appendChatEntry("user", promptText);
+      }
       window.appendChatEntry("ultron", reply);
     }
 

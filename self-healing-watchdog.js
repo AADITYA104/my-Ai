@@ -29,8 +29,13 @@ class SelfHealingWatchdog {
    * Check if a file is protected from destructive self-modification (Deny-list)
    */
   isProtectedPath(filePath) {
+    if (!filePath) return false;
     const base = path.basename(filePath);
-    return this.protectedFiles.some(p => base === p || filePath.includes(p));
+    const normalized = filePath.replace(/\\/g, "/");
+    return this.protectedFiles.some(p => {
+      if (p === ".git") return normalized.includes("/.git/") || normalized.endsWith("/.git") || base === ".git";
+      return base === p;
+    });
   }
 
   /**
