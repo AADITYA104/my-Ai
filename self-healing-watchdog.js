@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- *  ULTRON SELF-HEALING WATCHDOG & ROLLBACK GUARD
+ *  ULTRON SELF-HEALING WATCHDOG & ROLLBACK GUARD (2026 ARCHITECTURE)
  *  Protects Ultron from self-coding accidents, syntax errors, and crashes.
  * ============================================================================
  */
@@ -8,15 +8,29 @@
 
 const fs = require("fs");
 const path = require("path");
-const { execSync } = require("child_process");
 
 class SelfHealingWatchdog {
   constructor(projectRoot = __dirname) {
     this.projectRoot = projectRoot;
     this.backupDir = path.join(this.projectRoot, ".ultron_backups");
+    this.protectedFiles = [
+      ".env",
+      "docker-compose.yml",
+      "Dockerfile",
+      "self-healing-watchdog.js",
+      ".git"
+    ];
     if (!fs.existsSync(this.backupDir)) {
       fs.mkdirSync(this.backupDir, { recursive: true });
     }
+  }
+
+  /**
+   * Check if a file is protected from destructive self-modification (Deny-list)
+   */
+  isProtectedPath(filePath) {
+    const base = path.basename(filePath);
+    return this.protectedFiles.some(p => base === p || filePath.includes(p));
   }
 
   /**
@@ -38,14 +52,25 @@ class SelfHealingWatchdog {
   }
 
   /**
+   * Validate raw JavaScript code string
+   */
+  validateJsSyntax(code) {
+    try {
+      new Function(code);
+      return true;
+    } catch (syntaxErr) {
+      return false;
+    }
+  }
+
+  /**
    * Validate syntax of modified JavaScript file
    */
   validateSyntax(filePath) {
     if (!filePath.endsWith(".js") && !filePath.endsWith(".mjs")) return true;
     try {
       const code = fs.readFileSync(filePath, "utf-8");
-      new Function(code); // Quick syntax compilation check
-      return true;
+      return this.validateJsSyntax(code);
     } catch (syntaxErr) {
       console.error(`🚨 [WATCHDOG] SYNTAX ERROR DETECTED in ${filePath}:`, syntaxErr.message);
       return false;

@@ -1,13 +1,15 @@
 /**
  * ============================================================================
- *  LLM PROVIDERS - DUAL-ENGINE SMART TASK ROUTER & AUTO-FAILOVER
- *  Divides tasks between Fast Tier-1 (sub-second) and Deep Tier-2 (reasoning).
+ *  LLM PROVIDERS - DUAL-ENGINE SMART TASK ROUTER & AUTO-FAILOVER (2026 ARCHITECTURE)
+ *  Implements Section 20.2 (Retry + Graceful Failure) & Section 20.3 (Session State)
  * ============================================================================
  */
 "use strict";
 
 const fs = require("fs");
 const path = require("path");
+const sessionContinuity = require("./session-continuity");
+const skillEngine = require("./unified-skill-engine");
 
 // Load .env
 try {
@@ -28,7 +30,7 @@ try {
 } catch (_) {}
 
 function detectProvider() {
-  return "dual-engine-smart-router";
+  return "dual-engine-smart-router-2026";
 }
 
 // ---------------------------------------------------------------------------
@@ -125,9 +127,11 @@ async function callGemini(messages, system, tools, complexity = "fast") {
 }
 
 // ---------------------------------------------------------------------------
-// 2. LOCAL OLLAMA ENGINE (Offline Priority)
+// 2. LOCAL OLLAMA ENGINE (Section 20.2: Retry + Graceful Failure)
 // ---------------------------------------------------------------------------
-async function callOllama(messages, system) {
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function callOllama(messages, system, maxRetries = 3) {
   const host = process.env.OLLAMA_HOST || "http://localhost:11434";
   const model = process.env.OLLAMA_MODEL || "ultron-core";
   const url = `${host}/api/chat`;
@@ -141,26 +145,43 @@ async function callOllama(messages, system) {
     }
   }
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model, messages: ollamaMessages, stream: false })
-  });
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model, messages: ollamaMessages, stream: false }),
+        signal: AbortSignal.timeout(60000) // 60s timeout guard
+      });
 
-  if (!res.ok) throw new Error(`Ollama Error (${res.status})`);
+      if (!res.ok) {
+        throw new Error(`Ollama returned HTTP ${res.status}`);
+      }
 
-  const data = await res.json();
-  return {
-    content: [{ type: "text", text: data.message?.content || "" }],
-    modelUsed: `local-ollama (${model})`,
-    usage: { input_tokens: data.prompt_eval_count || 0, output_tokens: data.eval_count || 0 }
-  };
+      const data = await res.json();
+      return {
+        content: [{ type: "text", text: data.message?.content || "" }],
+        modelUsed: `local-ollama (${model})`,
+        usage: { input_tokens: data.prompt_eval_count || 0, output_tokens: data.eval_count || 0 }
+      };
+    } catch (err) {
+      console.warn(`[OLLAMA RETRY] Attempt ${attempt}/${maxRetries} failed: ${err.message}`);
+      if (attempt === maxRetries) {
+        throw new Error(`Ollama unreachable after ${maxRetries} attempts. ${err.message}`);
+      }
+      await sleep(1000 * attempt); // Exponential backoff
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
-// UNIVERSAL SMART DISPATCHER (Task Division Engine)
+// UNIVERSAL SMART DISPATCHER (Task Division Engine & Multi-Session Context)
 // ---------------------------------------------------------------------------
 async function callUniversalLLM(messages, system, tools = null) {
+  // Inject Multi-Session Continuity Context
+  const continuityContext = sessionContinuity.getContextPrompt();
+  const baseSystemWithContinuity = (system || "") + continuityContext;
+
   // Determine Task Complexity
   let isHeavyTask = false;
   if (tools && tools.length > 0) isHeavyTask = true;
@@ -174,17 +195,17 @@ async function callUniversalLLM(messages, system, tools = null) {
   // If simple conversational query -> Try local Ollama first, fallback to Fast Tier-1
   if (!isHeavyTask) {
     try {
-      return await callOllama(messages, system);
+      return await callOllama(messages, baseSystemWithContinuity);
     } catch (_) {
-      return await callGemini(messages, system, tools, "fast");
+      return await callGemini(messages, baseSystemWithContinuity, tools, "fast");
     }
   }
 
   // If heavy reasoning/coding task -> Use Deep Tier-2 Gemini or specialized agent
   try {
-    return await callGemini(messages, system, tools, "deep");
+    return await callGemini(messages, baseSystemWithContinuity, tools, "deep");
   } catch (_) {
-    return await callGemini(messages, system, tools, "fast");
+    return await callGemini(messages, baseSystemWithContinuity, tools, "fast");
   }
 }
 
