@@ -1,0 +1,22 @@
+# Target the x86-64-v2 microarchitecture level on all x86_64 builds.
+#
+# x86-64-v2 (Nehalem-era: SSE3/SSSE3/SSE4.1/SSE4.2/POPCNT) is the
+# baseline for all *plain* Rust code in the binary — the dispatch
+# prologue, LUT build, rotation loops, heap update, and the pre-AVX2
+# scalar fallback in search.rs. That code must execute on every x86_64
+# CPU the crate supports, including pre-Haswell CPUs without AVX2,
+# because it runs *before* the `is_x86_feature_detected!` dispatch can
+# choose a kernel.
+#
+# We do NOT set x86-64-v3 (AVX2/BMI2) or v4 (AVX-512) here: the AVX2
+# and AVX-512 kernels are `#[target_feature]`-gated functions that are
+# compiled with their full feature sets regardless of this baseline and
+# selected at runtime via `is_x86_feature_detected!`. Raising the
+# baseline above v2 makes the surrounding non-kernel code SIGILL on
+# CPUs without those features before dispatch ever runs — defeating
+# the scalar fallback (issue #137).
+#
+# ARM / aarch64 builds are unaffected — they use their own default
+# codegen target.
+[target.'cfg(target_arch = "x86_64")']
+rustflags = ["-C", "target-cpu=x86-64-v2"]

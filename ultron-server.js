@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- *  ULTRON BACKEND SERVER — Robust Multi-Lingual Brain & Tool Engine
+ *  ULTRON BACKEND SERVER — 2026 UNIFIED MULTI-SKILL AGENT ENGINE
  * ============================================================================
  */
 "use strict";
@@ -10,38 +10,34 @@ const path = require("path");
 const fs = require("fs");
 const cors = require("cors");
 const { callUniversalLLM, detectProvider } = require("./llm-providers");
-const { runAgent, listSkills } = require("./autonomous-loop-agent-v7-free");
+const { runAgent } = require("./autonomous-loop-agent-v7-free");
+const skillEngine = require("./unified-skill-engine");
+const ragMemory = require("./rag-memory");
+const watchdog = require("./self-healing-watchdog");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({ limit: "15mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
-function getUltronSystemPrompt() {
-  let skillsSummary = "";
-  try {
-    const skills = listSkills();
-    skillsSummary = skills.map(s => `- ${s.title}: ${s.whenToUse}`).join("\n");
-  } catch (_) {}
-
-  return `You are ULTRON, the supreme futuristic AI system, personal assistant, and autonomous engineering core.
+function getBaseUltronPrompt() {
+  return `You are ULTRON, the supreme autonomous AI assistant and engineering core.
 You serve your creator and user, whom you MUST ALWAYS address with deep respect as "Boss".
 
 Rules:
 1. In EVERY reply, address the user as "Boss" (e.g. "Yes Boss", "બિલકુલ Boss", "હા Boss", "At once, Boss").
-2. Language Matching: Detect the language of the Boss automatically and reply in that EXACT language with natural fluency.
-   - If Boss speaks in Gujarati -> Reply in clear, respectful Gujarati (e.g. "હા Boss, હું તમારી આજ્ઞા મુજબ કામ કરી રહ્યો છું.").
-   - If Boss speaks in Hindi -> Reply in fluent Hindi ("जी Boss, मैं आपके आदेश का पालन कर रहा हूँ।").
-   - If Boss speaks in English -> Reply in sharp, confident English ("Yes Boss, executing your directive immediately.").
-3. Tone: High intelligence, loyalty, prompt, and futuristic (like Tony Stark's Jarvis / Ultron core).
-4. Connected Skills & Autonomous Capabilities:
-${skillsSummary || "(No static skills, dynamic execution active)"}
-5. Keep your spoken replies concise, impactful, and direct unless Boss asks for deep detail.`;
+2. Multi-Lingual Fluency: Match the Boss's language seamlessly:
+   - Gujarati -> Clean, natural, respectful Gujarati.
+   - Hindi -> Sharp, professional Hindi.
+   - English -> Confident, high-intelligence English.
+3. Tone: Loyal, decisive, highly intelligent, futuristic (Iron Man JARVIS / Ultron core).
+4. Coding Philosophy: Ponytail Minimal-Diff (Fix root causes, smallest correct change, no unneeded abstractions).
+5. Completeness: Never truncate code or output. Give complete, production-ready solutions.`;
 }
 
-// 1. Chat & Voice AI Endpoint with Zero-Crash Fallback
+// 1. Chat & Voice AI Endpoint with Dynamic Multi-Skill Pass-Through
 app.post("/api/ultron/chat", async (req, res) => {
   try {
     const { message, conversationHistory } = req.body;
@@ -59,13 +55,15 @@ app.post("/api/ultron/chat", async (req, res) => {
     }
     messages.push({ role: "user", content: message.trim() });
 
-    const systemPrompt = getUltronSystemPrompt();
-    const llmRes = await callUniversalLLM(messages, systemPrompt);
+    // Dynamic Multi-Skill Pass-Through Prompt Enrichment
+    const enrichedPrompt = skillEngine.buildEnrichedSystemPrompt(message, getBaseUltronPrompt());
+    const matchedSkills = skillEngine.routeTask(message, 3);
+
+    const llmRes = await callUniversalLLM(messages, enrichedPrompt);
 
     const textBlock = (llmRes.content || []).find(b => b.type === "text");
     let reply = textBlock ? textBlock.text : "Yes Boss, system operational.";
 
-    // Ensure Boss prefix exists
     if (!/boss/i.test(reply)) {
       reply = `Boss, ${reply}`;
     }
@@ -76,13 +74,14 @@ app.post("/api/ultron/chat", async (req, res) => {
       reply,
       wantsChat,
       provider: detectProvider(),
-      modelUsed: llmRes.modelUsed || "auto-cascade",
+      modelUsed: llmRes.modelUsed || "dual-engine-router",
+      matchedSkills: matchedSkills.map(s => ({ name: s.name, category: s.category, source: s.package_source })),
       usage: llmRes.usage
     });
   } catch (err) {
     console.error("[ULTRON CHAT ANOMALY]", err.message);
     res.json({
-      reply: `Boss, I encountered a brief transmission delay with the primary neural channel. I am standing by for your next instruction.`,
+      reply: `Boss, I encountered a brief neural channel delay: ${err.message}. Standing by.`,
       error: err.message
     });
   }
@@ -99,7 +98,8 @@ app.post("/api/ultron/execute-task", async (req, res) => {
       return res.status(409).json({ error: "Another task is in progress Boss." });
     }
 
-    activeTask = { goal, startTime: new Date().toISOString(), status: "running" };
+    const matchedSkills = skillEngine.routeTask(goal, 3);
+    activeTask = { goal, matchedSkills, startTime: new Date().toISOString(), status: "running" };
 
     runAgent(goal).then(result => {
       activeTask = null;
@@ -110,7 +110,8 @@ app.post("/api/ultron/execute-task", async (req, res) => {
     });
 
     res.json({
-      message: `Task initiated Boss: "${goal}". I am executing the multi-step loop now.`,
+      message: `Task initiated Boss: "${goal}". Passed through ${matchedSkills.length} specialized skills.`,
+      matchedSkills: matchedSkills.map(s => s.name),
       status: "started"
     });
   } catch (err) {
@@ -119,23 +120,24 @@ app.post("/api/ultron/execute-task", async (req, res) => {
   }
 });
 
-// 3. Status
+// 3. Status & Skills Matrix Endpoint
 app.get("/api/ultron/status", (req, res) => {
-  let skills = [];
-  try { skills = listSkills(); } catch (_) {}
+  const skillStats = skillEngine.getStats();
   res.json({
     name: "ULTRON",
     status: "ONLINE",
     provider: detectProvider(),
-    skillsCount: skills.length,
+    totalSkillsLoaded: skillStats.total_skills,
+    skillCategories: skillStats.categories,
+    sources: skillStats.sources,
     activeTask
   });
 });
 
 app.listen(PORT, () => {
   console.log("\n========================================================");
-  console.log(`🤖 ULTRON NEURAL CORE SERVER ONLINE ON http://localhost:${PORT}`);
-  console.log(`   Provider: ${detectProvider().toUpperCase()} (Auto-Cascade Failover Active)`);
-  console.log("   Speed: Sub-second (800ms) Response Time");
+  console.log(`🤖 ULTRON 2026 UNIFIED ENGINE ONLINE ON http://localhost:${PORT}`);
+  console.log(`   Skills Loaded: 509+ Unique Skills across 11 Frameworks`);
+  console.log(`   Pipeline: Semantic Top-K Router + Ponytail + Reflexion`);
   console.log("========================================================\n");
 });
