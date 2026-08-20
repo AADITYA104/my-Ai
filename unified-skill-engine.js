@@ -124,7 +124,16 @@ Automatic checkpoints and syntax validation are active.
 </self_healing_watchdog>
 `;
 
-    return `${basePrompt}${coreRules}${skillInjections}`;
+    const airllmOptimizer = require("./airllm-optimizer");
+    const sysDesignMatches = airllmOptimizer.findSystemDesignBlueprint(taskDescription);
+    let sysDesignInjection = "";
+    if (sysDesignMatches && sysDesignMatches.length > 0) {
+      sysDesignInjection = `\n\n<system_design_knowledge>\n` +
+        sysDesignMatches.map(m => `--- ${m.topic.toUpperCase()} ARCHITECTURE ---\n${m.summary}`).join("\n\n") +
+        `\n</system_design_knowledge>`;
+    }
+
+    return `${basePrompt}${coreRules}${skillInjections}${sysDesignInjection}`;
   }
 
   /**
@@ -135,7 +144,11 @@ Automatic checkpoints and syntax validation are active.
       total_skills: this.skills.length,
       categories: this.categories,
       engine: "Semantic Top-K Pass-Through Router",
-      sources: ["impeccable", "ruflo", "gstack", "prime-agent", "taste-skill", "scroll-world", "turbovec", "strix", "awesome-llm-apps"]
+      sources: [
+        "impeccable", "ruflo", "gstack", "prime-agent", "taste-skill", "scroll-world",
+        "turbovec", "strix", "awesome-llm-apps", "OpenSandbox", "skills-main",
+        "ponytail", "Agent-Reach", "system-design-primer", "build-your-own-x", "airllm"
+      ]
     };
   }
 }
