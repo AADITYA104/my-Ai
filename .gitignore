@@ -1,7 +1,15 @@
 node_modules/
 .env
-.env.local
-agent-memory/
+.env.*
+!.env.example
+credentials.json
+*.pem
+*.key
+*.bak
+.ultron_backups/
+agent-memory/.snapshots/
+agent-memory/.workspace.lock
+agent-memory/.cron.lock
 workspace/
 _tmp_exec_*
 screenshot*.png

@@ -1,8 +1,8 @@
 /**
  * ============================================================================
  *  TELEGRAM GATEWAY — 2026 SOVEREIGN AGENT & TELEMETRY CONTROLLER
- *  - Strict Per-Chat Multi-User Session Isolation.
- *  - Input Sanitization Guardrails (Anti-Command Injection).
+ *  - Strict Per-Chat Multi-User Session Isolation & Rate Limiting.
+ *  - Input Sanitization & Stream-Level Secrets Redaction.
  *  - Real-Time Holographic Streaming to Mobile Terminal.
  *  - 711 Master Skills + Hardware Telemetry Integration.
  * ============================================================================
@@ -34,6 +34,23 @@ if (TOKEN) {
 
 // Strict Per-Chat Session Store (chatId -> UserSession)
 const userSessions = new Map();
+const rateLimitMap = new Map(); // chatId -> [timestamps]
+
+function checkRateLimit(chatId, maxRequests = 5, windowMs = 600000, cooldownMs = 10000) {
+  const now = Date.now();
+  const timestamps = rateLimitMap.get(chatId) || [];
+  const recent = timestamps.filter(t => now - t < windowMs);
+  
+  if (recent.length > 0 && now - recent[recent.length - 1] < cooldownMs) {
+    return { allowed: false, reason: "Please wait 10 seconds between requests, Boss." };
+  }
+  if (recent.length >= maxRequests) {
+    return { allowed: false, reason: "Rate limit reached (max 5 requests per 10 mins), Boss." };
+  }
+  recent.push(now);
+  rateLimitMap.set(chatId, recent);
+  return { allowed: true };
+}
 
 function isAllowed(chatId) {
   if (ALLOWED_CHAT_IDS.length === 0) return true;
@@ -55,7 +72,7 @@ function getSession(chatId) {
   return s;
 }
 
-// Console logs mirrored to Telegram per chat
+// Console logs mirrored to Telegram with live secrets redaction
 function attachProgressStreaming(chatId) {
   if (!bot) return () => {};
   const originalLog = console.log;
@@ -64,7 +81,9 @@ function attachProgressStreaming(chatId) {
 
   console.log = (...args) => {
     originalLog(...args);
-    buffer.push(args.join(" "));
+    const rawLine = args.join(" ");
+    const sanitized = watchdog.redactLogs(rawLine);
+    buffer.push(sanitized);
     const now = Date.now();
     if (now - lastFlush > 3500 || buffer.length > 6) {
       const chunk = buffer.join("\n").slice(0, 3500);
@@ -77,7 +96,8 @@ function attachProgressStreaming(chatId) {
   return () => {
     console.log = originalLog;
     if (buffer.length && bot) {
-      bot.sendMessage(chatId, buffer.join("\n").slice(0, 3500)).catch(() => {});
+      const finalChunk = watchdog.redactLogs(buffer.join("\n")).slice(0, 3500);
+      bot.sendMessage(chatId, finalChunk).catch(() => {});
     }
   };
 }
@@ -89,14 +109,18 @@ if (bot) {
       return bot.sendMessage(chatId, "⛔ Not authorized Boss.");
     }
 
+    const rateCheck = checkRateLimit(chatId);
+    if (!rateCheck.allowed) {
+      return bot.sendMessage(chatId, `⚠️ ${rateCheck.reason}`);
+    }
+
     const session = getSession(chatId);
     if (session.running) {
       return bot.sendMessage(chatId, "⚠️ A task is already in progress Boss. Use /status or /stop.");
     }
 
     const rawGoal = match[1];
-    // Input sanitization guard
-    const goal = rawGoal.slice(0, 1000).trim();
+    const goal = watchdog.sanitizeShellInput(rawGoal).slice(0, 1000).trim();
     if (!goal) return bot.sendMessage(chatId, "⚠️ Please provide a valid goal, Boss.");
 
     const matchedSkills = skillEngine.routeTask(goal, 3);
@@ -187,10 +211,11 @@ if (bot) {
     );
   });
 
-  console.log("🤖 [TELEGRAM GATEWAY] Initialized with Per-Chat Session Isolation.");
+  console.log("🤖 [TELEGRAM GATEWAY] Initialized with Rate Limiting & Per-Chat Isolation.");
 }
 
 module.exports = {
   isGatewayActive: () => !!bot,
-  getSession
+  getSession,
+  checkRateLimit
 };

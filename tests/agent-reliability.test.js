@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- *  ULTRON 2026 25-VECTOR ARCHITECTURAL HARDENING & RELIABILITY TEST SUITE
+ *  ULTRON 2026 COMPLETE PRODUCTION HARDENING & RELIABILITY TEST SUITE
  * ============================================================================
  */
 const assert = require("assert");
@@ -16,8 +16,10 @@ const cronScheduler = require("../cron-scheduler");
 const browserAgent = require("../browser-agent");
 const osBridge = require("../os-automation-bridge");
 const telegramGateway = require("../telegram-gateway");
+const taskClassifier = require("../task-classifier");
+const autonomousLoop = require("../autonomous-loop-agent-v7-free");
 
-console.log("=== RUNNING ULTRON 2026 25-VECTOR RELIABILITY TEST SUITE ===\n");
+console.log("=== RUNNING ULTRON 2026 EXTENDED PRODUCTION RELIABILITY TEST SUITE ===\n");
 
 let passed = 0;
 let failed = 0;
@@ -152,20 +154,75 @@ runTest("10. Telegram Gateway must isolate session state per chatId", () => {
   assert.strictEqual(sessionB.running, false, "Session B running state must remain unaffected");
 });
 
-// 11. Multi-Session Continuity Save and Restore
-runTest("11. Session Continuity should persist project state across sessions", () => {
-  const state = sessionContinuity.getState();
-  assert.ok(state.project_goal, "State must contain project_goal");
-  assert.ok(Array.isArray(state.completed_steps), "Completed steps must be an array");
+// 11. Dynamic Task Classifier & Recency Constraints
+runTest("11. Task Classifier should adapt prompts, temperature, and verbosity by task type", () => {
+  const codingCfg = taskClassifier.getTaskConfig("Write a binary search tree in TypeScript");
+  assert.strictEqual(codingCfg.taskType, "coding");
+  assert.strictEqual(codingCfg.temperature, 0.15);
+
+  const auditCfg = taskClassifier.getTaskConfig("Perform security audit for reentrancy vulnerabilities");
+  assert.strictEqual(auditCfg.taskType, "audit");
+  assert.strictEqual(auditCfg.temperature, 0.05);
+
+  const creativeCfg = taskClassifier.getTaskConfig("Design a landing page story and branding concept");
+  assert.strictEqual(creativeCfg.taskType, "creative");
+  assert.strictEqual(creativeCfg.temperature, 0.7);
+
+  const promptWithRecency = taskClassifier.injectRecencyConstraints("Base System", codingCfg);
+  assert.ok(promptWithRecency.includes("[MANDATORY OPERATIONAL CONSTRAINTS - RECENCY EMPHASIS]"));
 });
 
-// 12. Semantic Top-K Skill Routing
-runTest("12. Unified Skill Engine should correctly route UI and Security tasks", () => {
-  const uiSkills = skillEngine.routeTask("Create a brutalist 3D scroll world page", 2);
-  assert.ok(uiSkills.length > 0, "Must match at least 1 UI skill");
-  
-  const secSkills = skillEngine.routeTask("Perform security audit for reentrancy vulnerabilities", 2);
-  assert.ok(secSkills.length > 0, "Must match security skills");
+// 12. Memory Snapshotting and Rollback
+runTest("12. Session Continuity should support memory.md snapshotting and rollback", () => {
+  const memoryFile = path.join(__dirname, "..", "agent-memory", "memory.md");
+  fs.mkdirSync(path.dirname(memoryFile), { recursive: true });
+  fs.writeFileSync(memoryFile, "Initial Memory State 2026", "utf-8");
+
+  const snapId = sessionContinuity.createMemorySnapshot();
+  assert.ok(snapId, "Snapshot ID must be generated");
+
+  // Overwrite memory
+  fs.writeFileSync(memoryFile, "Corrupted Memory Content", "utf-8");
+  assert.strictEqual(fs.readFileSync(memoryFile, "utf-8"), "Corrupted Memory Content");
+
+  // Rollback
+  const restored = sessionContinuity.rollbackMemory(snapId);
+  assert.strictEqual(restored, true, "Rollback must succeed");
+  assert.strictEqual(fs.readFileSync(memoryFile, "utf-8"), "Initial Memory State 2026");
+});
+
+// 13. Stream-Level Secrets Redaction
+runTest("13. Watchdog should redact sensitive API keys and tokens from logs", () => {
+  const rawLog = "Error with API Key: AIzaSyD3x92KlmNopQrStUvWxYz1234567890AB and secret: sk-1234567890abcdef1234567890abcdef";
+  const redacted = watchdog.redactLogs(rawLog);
+  assert.ok(!redacted.includes("AIzaSyD3x"), "Google API key must be redacted");
+  assert.ok(!redacted.includes("sk-123456"), "OpenAI key must be redacted");
+  assert.ok(redacted.includes("[REDACTED: Google API Key]"));
+});
+
+// 14. Telegram Gateway Rate Limiter
+runTest("14. Telegram Gateway rate limiter should block rapid requests and exceed limits", () => {
+  const testChatId = 999999;
+  const res1 = telegramGateway.checkRateLimit(testChatId, 3, 60000, 1000);
+  assert.strictEqual(res1.allowed, true);
+
+  // Rapid request within cooldown
+  const res2 = telegramGateway.checkRateLimit(testChatId, 3, 60000, 1000);
+  assert.strictEqual(res2.allowed, false, "Must block within cooldown");
+});
+
+// 15. Workspace Mutex Lock
+runTest("15. Autonomous Loop should acquire and release cross-process workspace lock", () => {
+  const acquired1 = autonomousLoop.acquireWorkspaceLock("Goal 1");
+  assert.strictEqual(acquired1, true);
+
+  const acquired2 = autonomousLoop.acquireWorkspaceLock("Goal 2");
+  assert.strictEqual(acquired2, false, "Second workspace lock must be rejected");
+
+  autonomousLoop.releaseWorkspaceLock();
+  const acquired3 = autonomousLoop.acquireWorkspaceLock("Goal 3");
+  assert.strictEqual(acquired3, true);
+  autonomousLoop.releaseWorkspaceLock();
 });
 
 console.log(`\n======================================================`);

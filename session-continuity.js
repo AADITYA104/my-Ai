@@ -1,7 +1,9 @@
 /**
  * ============================================================================
- *  ULTRON MULTI-SESSION CONTINUITY ENGINE (2026 BLUEPRINT — SECTION 20.3)
- *  Saves and restores project state across sessions, laptop restarts, and tasks.
+ *  ULTRON MULTI-SESSION CONTINUITY & SNAPSHOT ENGINE (2026 ARCHITECTURE)
+ *  - Saves and restores project state across sessions and restarts.
+ *  - Automatic Git/File Snapshot Versioning for memory.md with Rollback.
+ *  - Cross-Session Context Grounding.
  * ============================================================================
  */
 "use strict";
@@ -11,15 +13,24 @@ const path = require("path");
 
 class SessionContinuity {
   constructor() {
-    this.stateFile = path.join(__dirname, "agent-memory", "project-state.json");
+    this.memoryDir = path.join(__dirname, "agent-memory");
+    this.stateFile = path.join(this.memoryDir, "project-state.json");
+    this.memoryFile = path.join(this.memoryDir, "memory.md");
+    this.snapshotDir = path.join(this.memoryDir, ".snapshots");
+    this.ensureDirs();
+  }
+
+  ensureDirs() {
+    if (!fs.existsSync(this.memoryDir)) {
+      fs.mkdirSync(this.memoryDir, { recursive: true });
+    }
+    if (!fs.existsSync(this.snapshotDir)) {
+      fs.mkdirSync(this.snapshotDir, { recursive: true });
+    }
     this.ensureStateFile();
   }
 
   ensureStateFile() {
-    const memoryDir = path.dirname(this.stateFile);
-    if (!fs.existsSync(memoryDir)) {
-      fs.mkdirSync(memoryDir, { recursive: true });
-    }
     if (!fs.existsSync(this.stateFile)) {
       const defaultState = {
         project_goal: "Ultron 2026 Sovereign Autonomous AI Assistant",
@@ -31,7 +42,7 @@ class SessionContinuity {
           "Dual-Engine 0-Crash LLM Cascade with Gemini and Ollama Qwen router",
           "AgentDB Persistent Vector Memory and audit ledger integration",
           "Picovoice Porcupine offline wake-word bridge (<20ms response)",
-          "509+ Master Skills Cataloged and Unified Skill Engine integration"
+          "711 Master Skills Cataloged and Unified Skill Engine integration"
         ],
         current_step: "Active autonomous assistance and continuous multi-skill execution",
         known_issues: [],
@@ -44,6 +55,45 @@ class SessionContinuity {
       };
       fs.writeFileSync(this.stateFile, JSON.stringify(defaultState, null, 2), "utf-8");
     }
+  }
+
+  /**
+   * Create an instant snapshot of memory.md before modifications
+   */
+  createMemorySnapshot() {
+    try {
+      if (fs.existsSync(this.memoryFile)) {
+        const snapId = `snap_${Date.now()}`;
+        const snapPath = path.join(this.snapshotDir, `memory_${snapId}.bak`);
+        fs.copyFileSync(this.memoryFile, snapPath);
+        return snapId;
+      }
+    } catch (err) {
+      console.warn(`[MEMORY SNAPSHOT ERROR] ${err.message}`);
+    }
+    return null;
+  }
+
+  /**
+   * Rollback memory.md to a specific snapshot or most recent
+   */
+  rollbackMemory(snapshotId = null) {
+    try {
+      const snaps = fs.readdirSync(this.snapshotDir).filter(f => f.startsWith("memory_") && f.endsWith(".bak")).sort();
+      if (snaps.length === 0) return false;
+
+      const targetFile = snapshotId ? `memory_${snapshotId}.bak` : snaps[snaps.length - 1];
+      const targetPath = path.join(this.snapshotDir, targetFile);
+
+      if (fs.existsSync(targetPath)) {
+        fs.copyFileSync(targetPath, this.memoryFile);
+        console.log(`✅ [MEMORY ROLLBACK] Restored memory.md from ${targetFile}`);
+        return true;
+      }
+    } catch (err) {
+      console.error(`[MEMORY ROLLBACK FAILED] ${err.message}`);
+    }
+    return false;
   }
 
   getState() {

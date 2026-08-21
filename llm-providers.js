@@ -1,10 +1,10 @@
 /**
  * ============================================================================
  *  LLM PROVIDERS - LOW-LOAD DUAL-ENGINE SMART ROUTER (2026 ARCHITECTURE)
- *  - 0% local laptop memory pressure via intelligent Tier-1/Tier-2 routing.
- *  - Robust Token-Budget Pre-Checking & Graceful Context Pruning.
- *  - Regex Fallback Extractor for Local JSON Tool Calls.
- *  - Persistent 30m Keep-Alive for Local Ollama Engines.
+ *  - Dynamic Task Classification, Tail Recency Bias & Temperature Tuning.
+ *  - Few-Shot Tool-Call Calibration for Local Quantized Models (Qwen).
+ *  - Jittered Exponential Backoff Retry Engine.
+ *  - Repetition Penalty (1.15) & 30m Persistent Keep-Alive for Ollama.
  * ============================================================================
  */
 "use strict";
@@ -13,6 +13,7 @@ const fs = require("fs");
 const path = require("path");
 const sessionContinuity = require("./session-continuity");
 const skillEngine = require("./unified-skill-engine");
+const { getTaskConfig, injectRecencyConstraints } = require("./task-classifier");
 
 // Load .env
 try {
@@ -66,12 +67,55 @@ function pruneContextIfNeeded(messages, maxTokens = 16000) {
 }
 
 // ---------------------------------------------------------------------------
-// 1. GOOGLE GEMINI DUAL-ENGINE CASCADE (0% Local RAM/CPU Load, <800ms)
+// 1. JITTERED EXPONENTIAL BACKOFF
+// ---------------------------------------------------------------------------
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function jitteredBackoff(attempt, baseMs = 1000, maxMs = 10000) {
+  const exp = Math.min(maxMs, baseMs * Math.pow(2, attempt));
+  const jitter = Math.random() * 500;
+  const delay = Math.min(maxMs, exp + jitter);
+  await sleep(delay);
+}
+
+// ---------------------------------------------------------------------------
+// 2. FEW-SHOT TOOL CALIBRATION FOR LOCAL QWEN / OLLAMA
+// ---------------------------------------------------------------------------
+const LOCAL_FEW_SHOT_TOOL_PROMPT = `
+[TOOL INVOCATION FORMAT & FEW-SHOT EXAMPLES]:
+When using a tool, you MUST output a valid JSON code block with "name" and "args".
+Example 1 (Reading a file):
+\`\`\`json
+{
+  "name": "read_file",
+  "args": { "filePath": "src/index.js" }
+}
+\`\`\`
+
+Example 2 (Writing code to a file):
+\`\`\`json
+{
+  "name": "write_file",
+  "args": { "filePath": "src/utils.js", "content": "export function sum(a, b) { return a + b; }" }
+}
+\`\`\`
+
+Example 3 (Running terminal command):
+\`\`\`json
+{
+  "name": "terminal_exec",
+  "args": { "command": "npm test" }
+}
+\`\`\`
+Do not include any conversational filler before or after the JSON block when invoking tools.`;
+
+// ---------------------------------------------------------------------------
+// 3. GOOGLE GEMINI DUAL-ENGINE CASCADE (0% Local RAM/CPU Load, <800ms)
 // ---------------------------------------------------------------------------
 const TIER1_FAST_MODELS = ["gemini-3.5-flash-lite", "gemini-flash-latest"];
 const TIER2_DEEP_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite"];
 
-async function callGemini(messages, system, tools = null, complexity = "fast") {
+async function callGemini(messages, system, tools = null, complexity = "fast", taskConfig = null) {
   const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GOOGLE_API_KEY missing");
 
@@ -117,12 +161,15 @@ async function callGemini(messages, system, tools = null, complexity = "fast") {
     }
   }
 
+  const temp = taskConfig?.temperature ?? (complexity === "deep" ? 0.2 : 0.3);
+  const maxTokens = taskConfig?.maxTokens ?? (complexity === "deep" ? 8000 : 2000);
+
   const generationConfig = {
-    temperature: complexity === "deep" ? 0.2 : 0.3,
-    maxOutputTokens: complexity === "deep" ? 8000 : 2000
+    temperature: temp,
+    maxOutputTokens: maxTokens
   };
 
-  // Native Adaptive Thinking Budget
+  // Native Adaptive Thinking Budget for deep tasks
   if (complexity === "deep") {
     generationConfig.thinkingConfig = {
       thinkingBudget: 2048
@@ -134,8 +181,13 @@ async function callGemini(messages, system, tools = null, complexity = "fast") {
     generationConfig
   };
 
-  if (system) {
-    payload.systemInstruction = { parts: [{ text: system }] };
+  let effectiveSystem = system || "";
+  if (taskConfig) {
+    effectiveSystem = injectRecencyConstraints(effectiveSystem, taskConfig);
+  }
+
+  if (effectiveSystem) {
+    payload.systemInstruction = { parts: [{ text: effectiveSystem }] };
   }
 
   if (tools && tools.length > 0) {
@@ -151,57 +203,57 @@ async function callGemini(messages, system, tools = null, complexity = "fast") {
   const candidateModels = complexity === "deep" ? TIER2_DEEP_MODELS : TIER1_FAST_MODELS;
   let lastError = null;
 
-  for (const model of candidateModels) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        lastError = new Error(data.error?.message || `HTTP ${res.status}`);
-        continue;
-      }
-      const candidate = data.candidates?.[0];
-      const parts = candidate?.content?.parts || [];
-      const standardizedBlocks = [];
-      for (const part of parts) {
-        if (part.text) standardizedBlocks.push({ type: "text", text: part.text });
-        if (part.functionCall) {
-          standardizedBlocks.push({
-            type: "tool_use",
-            id: "call_" + Math.random().toString(36).slice(2, 10),
-            name: part.functionCall.name,
-            input: part.functionCall.args || {}
-          });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    for (const model of candidateModels) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          lastError = new Error(data.error?.message || `HTTP ${res.status}`);
+          continue;
         }
+        const candidate = data.candidates?.[0];
+        const parts = candidate?.content?.parts || [];
+        const standardizedBlocks = [];
+        for (const part of parts) {
+          if (part.text) standardizedBlocks.push({ type: "text", text: part.text });
+          if (part.functionCall) {
+            standardizedBlocks.push({
+              type: "tool_use",
+              id: "call_" + Math.random().toString(36).slice(2, 10),
+              name: part.functionCall.name,
+              input: part.functionCall.args || {}
+            });
+          }
+        }
+        if (standardizedBlocks.length === 0 && candidate?.finishReason) {
+          standardizedBlocks.push({ type: "text", text: "Yes Boss, task processed." });
+        }
+        return {
+          content: standardizedBlocks,
+          modelUsed: `gemini-${model} (0% laptop load)`,
+          usage: { input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0 }
+        };
+      } catch (err) {
+        lastError = err;
       }
-      if (standardizedBlocks.length === 0 && candidate?.finishReason) {
-        standardizedBlocks.push({ type: "text", text: "Yes Boss, task processed." });
-      }
-      return {
-        content: standardizedBlocks,
-        modelUsed: `gemini-${model} (0% laptop load)`,
-        usage: { input_tokens: data.usageMetadata?.promptTokenCount || 0, output_tokens: data.usageMetadata?.candidatesTokenCount || 0 }
-      };
-    } catch (err) {
-      lastError = err;
     }
+    await jitteredBackoff(attempt);
   }
   throw lastError || new Error("Gemini cascade failed.");
 }
 
 // ---------------------------------------------------------------------------
-// 2. LOCAL OLLAMA ENGINE (Persistent Keep-Alive & Regex Tool Fallback)
+// 4. LOCAL OLLAMA ENGINE (Few-Shot Calibration & Repetition Penalty)
 // ---------------------------------------------------------------------------
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
 function parseLocalToolFallback(rawText) {
   if (!rawText || typeof rawText !== "string") return null;
   try {
-    // Check for ```json { "name": ..., "args": ... } ``` or ```json { "tool": ..., "input": ... } ```
     const match = rawText.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
     if (match && match[1]) {
       const parsed = JSON.parse(match[1]);
@@ -220,21 +272,29 @@ function parseLocalToolFallback(rawText) {
   return null;
 }
 
-async function callOllama(messages, system, maxRetries = 2) {
+async function callOllama(messages, system, maxRetries = 3, taskConfig = null) {
   const host = process.env.OLLAMA_HOST || "http://localhost:11434";
   const model = process.env.OLLAMA_MODEL || "ultron-core";
   const url = `${host}/api/chat`;
 
   const prunedMessages = pruneContextIfNeeded(messages, 8000);
 
+  let effectiveSystem = (system || "") + "\n" + LOCAL_FEW_SHOT_TOOL_PROMPT;
+  if (taskConfig) {
+    effectiveSystem = injectRecencyConstraints(effectiveSystem, taskConfig);
+  }
+
   const ollamaMessages = [];
-  if (system) ollamaMessages.push({ role: "system", content: system });
+  if (effectiveSystem) ollamaMessages.push({ role: "system", content: effectiveSystem });
 
   for (const m of prunedMessages) {
     if (typeof m.content === "string") {
       ollamaMessages.push({ role: m.role, content: m.content });
     }
   }
+
+  const temp = taskConfig?.temperature ?? 0.2;
+  const repeatPenalty = taskConfig?.repeatPenalty ?? 1.15;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -245,7 +305,11 @@ async function callOllama(messages, system, maxRetries = 2) {
           model,
           messages: ollamaMessages,
           stream: false,
-          keep_alive: "30m" // Keep model warm in memory to eliminate cold start
+          keep_alive: "30m",
+          options: {
+            temperature: temp,
+            repeat_penalty: repeatPenalty
+          }
         }),
         signal: AbortSignal.timeout(45000)
       });
@@ -256,7 +320,6 @@ async function callOllama(messages, system, maxRetries = 2) {
       const rawReply = data.message?.content || "";
       const standardizedBlocks = [];
 
-      // Check if local model generated a tool call in text
       const fallbackTool = parseLocalToolFallback(rawReply);
       if (fallbackTool) {
         standardizedBlocks.push(fallbackTool);
@@ -271,38 +334,40 @@ async function callOllama(messages, system, maxRetries = 2) {
     } catch (err) {
       console.warn(`[OLLAMA ATTEMPT ${attempt}] ${err.message}`);
       if (attempt === maxRetries) {
-        throw new Error(`Ollama busy/unreachable. Switched to zero-load cloud cascade.`);
+        throw new Error(`Ollama busy/unreachable after retries.`);
       }
-      await sleep(1000 * attempt);
+      await jitteredBackoff(attempt);
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// 3. LOW-LOAD SMART DISPATCHER
+// 5. LOW-LOAD SMART DISPATCHER WITH DYNAMIC TASK CLASSIFICATION
 // ---------------------------------------------------------------------------
 async function callUniversalLLM(messages, system, tools = null) {
   const continuityContext = sessionContinuity.getContextPrompt();
   const baseSystemWithContinuity = (system || "") + continuityContext;
 
+  const lastMsg = messages[messages.length - 1]?.content || "";
+  const queryStr = typeof lastMsg === "string" ? lastMsg : JSON.stringify(lastMsg);
+  const taskConfig = getTaskConfig(queryStr);
+
   const isOfflineForced = process.env.FORCE_OFFLINE === "true";
 
   if (isOfflineForced) {
     try {
-      return await callOllama(messages, baseSystemWithContinuity);
+      return await callOllama(messages, baseSystemWithContinuity, 3, taskConfig);
     } catch (_) {
-      return await callGemini(messages, baseSystemWithContinuity, tools, "fast");
+      return await callGemini(messages, baseSystemWithContinuity, tools, "fast", taskConfig);
     }
   }
 
-  // Zero-Load Smart Route: Use ultra-fast cloud engine (0% RAM/GPU load on laptop)
   try {
-    const lastMsg = messages[messages.length - 1]?.content || "";
-    const isDeep = (tools && tools.length > 0) || (typeof lastMsg === "string" && /(architect|audit|complex|deep|refactor)/i.test(lastMsg));
-    return await callGemini(messages, baseSystemWithContinuity, tools, isDeep ? "deep" : "fast");
+    const isDeep = (tools && tools.length > 0) || taskConfig.taskType === "coding" || taskConfig.taskType === "audit";
+    return await callGemini(messages, baseSystemWithContinuity, tools, isDeep ? "deep" : "fast", taskConfig);
   } catch (cloudErr) {
     console.warn("[CLOUD FAILOVER TO LOCAL]", cloudErr.message);
-    return await callOllama(messages, baseSystemWithContinuity);
+    return await callOllama(messages, baseSystemWithContinuity, 3, taskConfig);
   }
 }
 
@@ -312,5 +377,6 @@ module.exports = {
   callGemini,
   callOllama,
   estimateTokens,
-  pruneContextIfNeeded
+  pruneContextIfNeeded,
+  jitteredBackoff
 };

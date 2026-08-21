@@ -333,9 +333,9 @@ app.post("/api/ultron/execute-task", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// 5. LIVE TELEMETRY & HEALTH API
+// 5. LIVE TELEMETRY, HEALTH & READINESS APIS
 // ---------------------------------------------------------------------------
-app.get("/api/ultron/health", (req, res) => {
+app.get(["/health", "/ready", "/api/ultron/health"], (req, res) => {
   const totalMem = (os.totalmem() / 1024 / 1024 / 1024).toFixed(1);
   const freeMem = (os.freemem() / 1024 / 1024 / 1024).toFixed(1);
   const usedMem = (totalMem - freeMem).toFixed(1);
@@ -344,6 +344,7 @@ app.get("/api/ultron/health", (req, res) => {
   res.json({
     status: "HEALTHY",
     uptimeSeconds: Math.floor(os.uptime()),
+    timestamp: new Date().toISOString(),
     system: {
       platform: os.platform(),
       cpus: os.cpus().length,

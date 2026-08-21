@@ -1,7 +1,9 @@
 /**
  * ============================================================================
  *  ULTRON SELF-HEALING WATCHDOG & GUARDRAIL DEFENDER (2026 ARCHITECTURE)
- *  Protects Ultron from self-coding accidents, path escapes, and destructive commands.
+ *  - Protects Ultron from self-coding accidents, path escapes, and destructive commands.
+ *  - Stream-Level Log Redactor for API Keys, Tokens, and Credentials.
+ *  - Pre-Edit Checkpointing & AST/Syntax Rollback.
  * ============================================================================
  */
 "use strict";
@@ -46,9 +48,31 @@ class SelfHealingWatchdog {
       /reg\s+delete\s+(?:hklm|hkcu|hkey)/i
     ];
 
+    // Secrets Redaction Rules
+    this.secretPatterns = [
+      { re: /AIzaSy[A-Za-z0-9\-_]{33}/g, label: "Google API Key" },
+      { re: /sk-[A-Za-z0-9]{32,64}/g, label: "OpenAI/Anthropic API Key" },
+      { re: /ghp_[A-Za-z0-9]{36}/g, label: "GitHub Token" },
+      { re: /Bearer\s+[A-Za-z0-9\-_\.]{20,}/gi, label: "Bearer Token" },
+      { re: /(?:password|secret|apiKey)\s*[:=]\s*['"][^'"]+['"]/gi, label: "Plain Secret" }
+    ];
+
     if (!fs.existsSync(this.backupDir)) {
       fs.mkdirSync(this.backupDir, { recursive: true });
     }
+  }
+
+  /**
+   * Redact sensitive secrets from log strings
+   */
+  redactLogs(message) {
+    if (!message || typeof message !== "string") return message;
+    let clean = message;
+    for (const { re, label } of this.secretPatterns) {
+      re.lastIndex = 0;
+      clean = clean.replace(re, `[REDACTED: ${label}]`);
+    }
+    return clean;
   }
 
   /**
@@ -60,7 +84,6 @@ class SelfHealingWatchdog {
       const normalized = path.normalize(filePath);
       const absPath = path.resolve(this.projectRoot, normalized);
 
-      // Check if real canonical path attempts to escape project root (unless explicitly allowed)
       let canonical = absPath;
       if (fs.existsSync(absPath)) {
         try {
@@ -69,9 +92,7 @@ class SelfHealingWatchdog {
       }
 
       const base = path.basename(canonical);
-      const relToRoot = path.relative(this.projectRoot, canonical);
 
-      // Check against protected files list
       return this.protectedFiles.some(p => {
         if (p === ".git") {
           return canonical.replace(/\\/g, "/").includes("/.git") || base === ".git";
@@ -96,7 +117,6 @@ class SelfHealingWatchdog {
    */
   sanitizeShellInput(input) {
     if (!input || typeof input !== "string") return "";
-    // Disallow dangerous shell chaining if not strictly needed
     return input.replace(/[;&|`$><]/g, "").trim();
   }
 
