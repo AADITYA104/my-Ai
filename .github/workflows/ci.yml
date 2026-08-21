@@ -1,0 +1,34 @@
+name: Ultron 2026 CI Test & Reliability Suite
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  audit-and-test:
+    name: System Integrity & Reliability Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Full System Syntax & Module Audit
+        run: node tests/audit.test.js
+
+      - name: Run 25-Vector Reliability & Guardrails Test Suite
+        run: node tests/agent-reliability.test.js
+
+      - name: Run Blueprint Architecture Verification Gate
+        run: node verify_blueprint_system.js
