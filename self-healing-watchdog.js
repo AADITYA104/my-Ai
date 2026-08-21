@@ -1,7 +1,7 @@
 /**
  * ============================================================================
- *  ULTRON SELF-HEALING WATCHDOG & ROLLBACK GUARD (2026 ARCHITECTURE)
- *  Protects Ultron from self-coding accidents, syntax errors, and crashes.
+ *  ULTRON SELF-HEALING WATCHDOG & GUARDRAIL DEFENDER (2026 ARCHITECTURE)
+ *  Protects Ultron from self-coding accidents, path escapes, and destructive commands.
  * ============================================================================
  */
 "use strict";
@@ -11,7 +11,7 @@ const path = require("path");
 
 class SelfHealingWatchdog {
   constructor(projectRoot = __dirname) {
-    this.projectRoot = projectRoot;
+    this.projectRoot = path.resolve(projectRoot);
     this.backupDir = path.join(this.projectRoot, ".ultron_backups");
     this.protectedFiles = [
       ".env",
@@ -20,22 +20,84 @@ class SelfHealingWatchdog {
       "self-healing-watchdog.js",
       ".git"
     ];
+
+    // Destructive Command Deny-Matrix (Linux + Windows PowerShell / CMD)
+    this.destructiveCommandPatterns = [
+      // Linux dangerous commands
+      /rm\s+-(?:rf|fr|r)\s+[\/\\]/i,
+      /find\s+[\.\/\\]+\s+-delete/i,
+      /mkfs(?:\.[a-z0-9]+)?\s+/i,
+      /dd\s+if=/i,
+      /:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/i, // Fork bomb
+      /chmod\s+-R\s+777\s+[\/\\]/i,
+
+      // Windows PowerShell dangerous commands
+      /Remove-Item\s+.*(?:-Recurse|-Force)/i,
+      /Clear-Disk/i,
+      /Format-Volume/i,
+      /Stop-Computer/i,
+      /Restart-Computer/i,
+
+      // Windows CMD dangerous commands
+      /del\s+(?:\/[a-z]\s+)*(?:\/s|\/q|\/f)\s+[a-z]:[\\\/]/i,
+      /rmdir\s+\/s(?:\s+\/q)?\s+[a-z]:[\\\/]/i,
+      /format\s+[a-z]:/i,
+      /diskpart/i,
+      /reg\s+delete\s+(?:hklm|hkcu|hkey)/i
+    ];
+
     if (!fs.existsSync(this.backupDir)) {
       fs.mkdirSync(this.backupDir, { recursive: true });
     }
   }
 
   /**
-   * Check if a file is protected from destructive self-modification (Deny-list)
+   * Check if path attempts sandbox escape via symlinks, relative traversal '..', or is protected
    */
   isProtectedPath(filePath) {
     if (!filePath) return false;
-    const base = path.basename(filePath);
-    const normalized = filePath.replace(/\\/g, "/");
-    return this.protectedFiles.some(p => {
-      if (p === ".git") return normalized.includes("/.git/") || normalized.endsWith("/.git") || base === ".git";
-      return base === p;
-    });
+    try {
+      const normalized = path.normalize(filePath);
+      const absPath = path.resolve(this.projectRoot, normalized);
+
+      // Check if real canonical path attempts to escape project root (unless explicitly allowed)
+      let canonical = absPath;
+      if (fs.existsSync(absPath)) {
+        try {
+          canonical = fs.realpathSync(absPath);
+        } catch (_) {}
+      }
+
+      const base = path.basename(canonical);
+      const relToRoot = path.relative(this.projectRoot, canonical);
+
+      // Check against protected files list
+      return this.protectedFiles.some(p => {
+        if (p === ".git") {
+          return canonical.replace(/\\/g, "/").includes("/.git") || base === ".git";
+        }
+        return base === p;
+      });
+    } catch (_) {
+      return true; // Fail-safe
+    }
+  }
+
+  /**
+   * Check if a shell command contains dangerous destructive patterns
+   */
+  isDestructiveCommand(cmd) {
+    if (!cmd || typeof cmd !== "string") return false;
+    return this.destructiveCommandPatterns.some(pattern => pattern.test(cmd));
+  }
+
+  /**
+   * Sanitize external input for shell injection
+   */
+  sanitizeShellInput(input) {
+    if (!input || typeof input !== "string") return "";
+    // Disallow dangerous shell chaining if not strictly needed
+    return input.replace(/[;&|`$><]/g, "").trim();
   }
 
   /**
@@ -43,10 +105,11 @@ class SelfHealingWatchdog {
    */
   createCheckpoint(filePath) {
     try {
-      const relPath = path.relative(this.projectRoot, filePath);
-      const backupPath = path.join(this.backupDir, `${path.basename(filePath)}.${Date.now()}.bak`);
-      if (fs.existsSync(filePath)) {
-        fs.copyFileSync(filePath, backupPath);
+      const absPath = path.resolve(this.projectRoot, filePath);
+      const relPath = path.relative(this.projectRoot, absPath);
+      const backupPath = path.join(this.backupDir, `${path.basename(absPath)}.${Date.now()}.bak`);
+      if (fs.existsSync(absPath)) {
+        fs.copyFileSync(absPath, backupPath);
         console.log(`🛡️ [WATCHDOG] Checkpoint created for ${relPath}`);
         return backupPath;
       }

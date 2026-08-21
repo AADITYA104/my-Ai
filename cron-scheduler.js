@@ -1,39 +1,86 @@
 /**
  * ============================================================================
- *  CRON SCHEDULER — background automation, no human trigger needed
- * ============================================================================
- *
- * Runs agent goals on a schedule (daily market research, lead scraping,
- * content posting, etc.) without you sending a message. Reports results
- * to Telegram if TELEGRAM_BOT_TOKEN + REPORT_CHAT_ID are set, otherwise
- * just logs to a file.
- *
- * DESIGN NOTE — why this file is separate from the Telegram gateway:
- *   The gateway is EVENT-driven (you send /goal, it runs once).
- *   This scheduler is TIME-driven (runs whether or not you're watching).
- *   They share the same brain (autonomous-loop-agent-v5-native-tools.js)
- *   with dedicated run-history logging in agent-memory/cron-run-log.jsonl.
+ *  CRON SCHEDULER — Background Autonomous Automation (2026 ARCHITECTURE)
+ *  - Mutex PID Lock (.cron.lock) to Prevent Job Execution Overlap.
+ *  - Dead-Letter Failure Queue (dead_letter_queue.jsonl) with Alerting.
+ *  - Connected to Master 2026 Engine (autonomous-loop-agent-v7-free.js).
  * ============================================================================
  */
+"use strict";
 
 const fs = require("fs");
 const path = require("path");
 const cron = require("node-cron");
-const { runAgent } = require("./autonomous-loop-agent-v5-native-tools");
+const { runAgent } = require("./autonomous-loop-agent-v7-free");
 
-const RUN_LOG = path.join(__dirname, "agent-memory", "cron-run-log.jsonl");
+const MEMORY_DIR = path.join(__dirname, "agent-memory");
+const RUN_LOG = path.join(MEMORY_DIR, "cron-run-log.jsonl");
+const DLQ_FILE = path.join(MEMORY_DIR, "dead_letter_queue.jsonl");
+const LOCK_FILE = path.join(MEMORY_DIR, ".cron.lock");
+
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const REPORT_CHAT_ID = process.env.REPORT_CHAT_ID;
 
 let bot = null;
 if (TELEGRAM_BOT_TOKEN && REPORT_CHAT_ID) {
-  const TelegramBot = require("node-telegram-bot-api");
-  bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: false });
+  try {
+    const TelegramBot = require("node-telegram-bot-api");
+    bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: false });
+  } catch (_) {}
 }
 
 // ---------------------------------------------------------------------------
-// SCHEDULE — edit this to define your recurring jobs
-// Cron format: minute hour day-of-month month day-of-week
+// 1. MUTEX PID LOCK FILE MANAGEMENT (Anti-Overlap Guard)
+// ---------------------------------------------------------------------------
+function acquireLock(jobName) {
+  if (fs.existsSync(LOCK_FILE)) {
+    try {
+      const lockData = JSON.parse(fs.readFileSync(LOCK_FILE, "utf-8"));
+      // If lock was created recently (<1 hour) and by an active job, block overlap
+      if (Date.now() - lockData.timestamp < 3600000) {
+        console.warn(`🔒 [CRON LOCK] Job '${jobName}' blocked: '${lockData.job}' is currently running (PID: ${lockData.pid}).`);
+        return false;
+      }
+    } catch (_) {}
+  }
+  try {
+    fs.mkdirSync(MEMORY_DIR, { recursive: true });
+    fs.writeFileSync(LOCK_FILE, JSON.stringify({ job: jobName, pid: process.pid, timestamp: Date.now() }));
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function releaseLock() {
+  try {
+    if (fs.existsSync(LOCK_FILE)) fs.unlinkSync(LOCK_FILE);
+  } catch (_) {}
+}
+
+// ---------------------------------------------------------------------------
+// 2. DEAD-LETTER FAILURE QUEUE (DLQ)
+// ---------------------------------------------------------------------------
+function pushToDeadLetterQueue(jobName, goal, error) {
+  try {
+    fs.mkdirSync(MEMORY_DIR, { recursive: true });
+    const dlqEntry = {
+      job: jobName,
+      goal,
+      error: error ? error.message : "Unknown failure",
+      stack: error ? error.stack : "",
+      timestamp: new Date().toISOString(),
+      retryCount: 0
+    };
+    fs.appendFileSync(DLQ_FILE, JSON.stringify(dlqEntry) + "\n", "utf-8");
+    console.error(`📬 [DLQ] Pushed failed job '${jobName}' to Dead-Letter Queue.`);
+  } catch (err) {
+    console.error("[DLQ WRITE ERROR]", err.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 3. SCHEDULE DEFINITION
 // ---------------------------------------------------------------------------
 const SCHEDULE = [
   {
@@ -50,11 +97,8 @@ const SCHEDULE = [
   },
 ];
 
-// ---------------------------------------------------------------------------
-// Run-history logging — every scheduled run appends one JSON line
-// ---------------------------------------------------------------------------
 function logRun(jobName, result, error) {
-  fs.mkdirSync(path.dirname(RUN_LOG), { recursive: true });
+  fs.mkdirSync(MEMORY_DIR, { recursive: true });
   const entry = {
     job: jobName,
     timestamp: new Date().toISOString(),
@@ -77,49 +121,46 @@ async function report(message) {
 }
 
 // ---------------------------------------------------------------------------
-// Job runner — wraps runAgent with logging + reporting + isolation
+// 4. ATOMIC RUNNER WITH MUTEX & DLQ
 // ---------------------------------------------------------------------------
 async function runScheduledJob(job) {
+  if (!acquireLock(job.name)) {
+    return;
+  }
+
   await report(`⏰ [${job.name}] Starting scheduled run...`);
   try {
     const result = await runAgent(job.goal);
     logRun(job.name, result, null);
     await report(
       `${result.success ? "✅" : "⚠️"} [${job.name}] ${result.success ? "Completed" : "Did not complete"}.\n` +
-        `Iterations: ${result.iterations}, Tokens: ${result.tokensUsed || "n/a"}`
+      `Iterations: ${result.iterations}, Tokens: ${result.tokensUsed || "n/a"}`
     );
+    if (!result.success) {
+      pushToDeadLetterQueue(job.name, job.goal, new Error(result.reason || "Did not complete successfully"));
+    }
   } catch (error) {
     logRun(job.name, null, error);
+    pushToDeadLetterQueue(job.name, job.goal, error);
     await report(`❌ [${job.name}] Failed with error: ${error.message}`);
+  } finally {
+    releaseLock();
   }
 }
 
 // ---------------------------------------------------------------------------
-// REGISTER all enabled jobs
+// 5. REGISTER CRON JOBS
 // ---------------------------------------------------------------------------
 SCHEDULE.filter((j) => j.enabled).forEach((job) => {
-  if (!cron.validate(job.cronExpr)) {
-    console.error(`Invalid cron expression for job "${job.name}": ${job.cronExpr}`);
-    return;
-  }
-  cron.schedule(job.cronExpr, () => runScheduledJob(job));
-  console.log(`Registered job "${job.name}" -> ${job.cronExpr}`);
+  cron.schedule(job.cronExpr, () => {
+    runScheduledJob(job);
+  });
+  console.log(`⏱️ Registered cron job '${job.name}' [${job.cronExpr}]`);
 });
 
-console.log("\nCron scheduler running. Jobs will fire on their configured schedule.");
-console.log("Keep this process alive with pm2/systemd/screen/tmux — it does nothing if killed.\n");
-
-// ---------------------------------------------------------------------------
-// CLI Trigger Flag: node cron-scheduler.js --run-now daily-market-news
-// ---------------------------------------------------------------------------
-const runNowFlagIndex = process.argv.indexOf("--run-now");
-if (runNowFlagIndex !== -1) {
-  const jobName = process.argv[runNowFlagIndex + 1];
-  const job = SCHEDULE.find((j) => j.name === jobName);
-  if (job) {
-    console.log(`[--run-now] Triggering "${jobName}" immediately for testing...`);
-    runScheduledJob(job);
-  } else {
-    console.error(`No job named "${jobName}" found in SCHEDULE.`);
-  }
-}
+module.exports = {
+  SCHEDULE,
+  runScheduledJob,
+  acquireLock,
+  releaseLock
+};

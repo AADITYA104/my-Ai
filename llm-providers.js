@@ -1,8 +1,10 @@
 /**
  * ============================================================================
  *  LLM PROVIDERS - LOW-LOAD DUAL-ENGINE SMART ROUTER (2026 ARCHITECTURE)
- *  Prioritizes zero laptop memory pressure, sub-second responses (<800ms),
- *  and seamless failover across local Ollama and Gemini Cloud engines.
+ *  - 0% local laptop memory pressure via intelligent Tier-1/Tier-2 routing.
+ *  - Robust Token-Budget Pre-Checking & Graceful Context Pruning.
+ *  - Regex Fallback Extractor for Local JSON Tool Calls.
+ *  - Persistent 30m Keep-Alive for Local Ollama Engines.
  * ============================================================================
  */
 "use strict";
@@ -35,6 +37,35 @@ function detectProvider() {
 }
 
 // ---------------------------------------------------------------------------
+// 0. TOKEN BUDGET PRE-CHECK & CONTEXT PRUNING
+// ---------------------------------------------------------------------------
+function estimateTokens(text) {
+  if (!text) return 0;
+  if (typeof text !== "string") text = JSON.stringify(text);
+  return Math.ceil(text.length / 3.8);
+}
+
+function pruneContextIfNeeded(messages, maxTokens = 16000) {
+  if (!Array.isArray(messages) || messages.length <= 4) return messages;
+
+  let totalTokens = messages.reduce((acc, m) => acc + estimateTokens(m.content), 0);
+  if (totalTokens <= maxTokens) return messages;
+
+  console.log(`⚠️ [TOKEN GUARD] Context size (${totalTokens} tokens) exceeds limit (${maxTokens}). Pruning oldest turns...`);
+
+  const preservedHead = messages.slice(0, 1);
+  const preservedTail = messages.slice(-3);
+  let middleTurns = messages.slice(1, -3);
+
+  while (middleTurns.length > 0 && totalTokens > maxTokens) {
+    const removed = middleTurns.shift();
+    totalTokens -= estimateTokens(removed.content);
+  }
+
+  return [...preservedHead, { role: "user", content: "[SYSTEM]: ...Older conversation context condensed..." }, ...middleTurns, ...preservedTail];
+}
+
+// ---------------------------------------------------------------------------
 // 1. GOOGLE GEMINI DUAL-ENGINE CASCADE (0% Local RAM/CPU Load, <800ms)
 // ---------------------------------------------------------------------------
 const TIER1_FAST_MODELS = ["gemini-3.5-flash-lite", "gemini-flash-latest"];
@@ -44,8 +75,10 @@ async function callGemini(messages, system, tools = null, complexity = "fast") {
   const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GOOGLE_API_KEY missing");
 
+  const prunedMessages = pruneContextIfNeeded(messages, complexity === "deep" ? 28000 : 14000);
+
   const contents = [];
-  for (const m of messages) {
+  for (const m of prunedMessages) {
     const role = m.role === "assistant" ? "model" : "user";
     const parts = [];
 
@@ -161,19 +194,43 @@ async function callGemini(messages, system, tools = null, complexity = "fast") {
 }
 
 // ---------------------------------------------------------------------------
-// 2. LOCAL OLLAMA ENGINE (Optimized with Fallback)
+// 2. LOCAL OLLAMA ENGINE (Persistent Keep-Alive & Regex Tool Fallback)
 // ---------------------------------------------------------------------------
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function parseLocalToolFallback(rawText) {
+  if (!rawText || typeof rawText !== "string") return null;
+  try {
+    // Check for ```json { "name": ..., "args": ... } ``` or ```json { "tool": ..., "input": ... } ```
+    const match = rawText.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+    if (match && match[1]) {
+      const parsed = JSON.parse(match[1]);
+      const toolName = parsed.name || parsed.tool || parsed.function;
+      const toolInput = parsed.args || parsed.input || parsed.parameters || {};
+      if (toolName) {
+        return {
+          type: "tool_use",
+          id: "call_" + Math.random().toString(36).slice(2, 10),
+          name: toolName,
+          input: toolInput
+        };
+      }
+    }
+  } catch (_) {}
+  return null;
+}
 
 async function callOllama(messages, system, maxRetries = 2) {
   const host = process.env.OLLAMA_HOST || "http://localhost:11434";
   const model = process.env.OLLAMA_MODEL || "ultron-core";
   const url = `${host}/api/chat`;
 
+  const prunedMessages = pruneContextIfNeeded(messages, 8000);
+
   const ollamaMessages = [];
   if (system) ollamaMessages.push({ role: "system", content: system });
 
-  for (const m of messages) {
+  for (const m of prunedMessages) {
     if (typeof m.content === "string") {
       ollamaMessages.push({ role: m.role, content: m.content });
     }
@@ -184,15 +241,30 @@ async function callOllama(messages, system, maxRetries = 2) {
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model, messages: ollamaMessages, stream: false }),
+        body: JSON.stringify({
+          model,
+          messages: ollamaMessages,
+          stream: false,
+          keep_alive: "30m" // Keep model warm in memory to eliminate cold start
+        }),
         signal: AbortSignal.timeout(45000)
       });
 
       if (!res.ok) throw new Error(`Ollama returned HTTP ${res.status}`);
 
       const data = await res.json();
+      const rawReply = data.message?.content || "";
+      const standardizedBlocks = [];
+
+      // Check if local model generated a tool call in text
+      const fallbackTool = parseLocalToolFallback(rawReply);
+      if (fallbackTool) {
+        standardizedBlocks.push(fallbackTool);
+      }
+      standardizedBlocks.push({ type: "text", text: rawReply });
+
       return {
-        content: [{ type: "text", text: data.message?.content || "" }],
+        content: standardizedBlocks,
         modelUsed: `local-ollama (${model})`,
         usage: { input_tokens: data.prompt_eval_count || 0, output_tokens: data.eval_count || 0 }
       };
@@ -238,5 +310,7 @@ module.exports = {
   detectProvider,
   callUniversalLLM,
   callGemini,
-  callOllama
+  callOllama,
+  estimateTokens,
+  pruneContextIfNeeded
 };

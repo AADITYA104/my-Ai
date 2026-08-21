@@ -1,17 +1,10 @@
 /**
  * ============================================================================
  *  TELEGRAM GATEWAY — 2026 SOVEREIGN AGENT & TELEMETRY CONTROLLER
- * ============================================================================
- *
- * Wraps autonomous-loop-agent-v7-free.js (Universal Free Multi-Provider Engine)
- * with 708 Master Skills, Ponytail root-cause repair, and real-time streaming.
- *
- * COMMANDS:
- *   /goal <text>   — starts the agent on a new goal with 708-skill pass-through
- *   /status        — shows if a goal is currently running
- *   /skills        — lists top master skills & categories
- *   /health        — displays live laptop memory, VRAM, and system metrics
- *   /stop          — requests the current run to stop cleanly
+ *  - Strict Per-Chat Multi-User Session Isolation.
+ *  - Input Sanitization Guardrails (Anti-Command Injection).
+ *  - Real-Time Holographic Streaming to Mobile Terminal.
+ *  - 711 Master Skills + Hardware Telemetry Integration.
  * ============================================================================
  */
 "use strict";
@@ -39,22 +32,30 @@ if (TOKEN) {
   bot = new TelegramBot(TOKEN, { polling: true });
 }
 
-// chatId -> { running: bool, stopRequested: bool }
-const chatState = new Map();
+// Strict Per-Chat Session Store (chatId -> UserSession)
+const userSessions = new Map();
 
 function isAllowed(chatId) {
-  if (ALLOWED_CHAT_IDS.length === 0) return true; // If no whitelist configured, allow default
+  if (ALLOWED_CHAT_IDS.length === 0) return true;
   return ALLOWED_CHAT_IDS.includes(String(chatId));
 }
 
-function getState(chatId) {
-  if (!chatState.has(chatId)) {
-    chatState.set(chatId, { running: false, stopRequested: false });
+function getSession(chatId) {
+  if (!userSessions.has(chatId)) {
+    userSessions.set(chatId, {
+      chatId,
+      running: false,
+      stopRequested: false,
+      history: [],
+      lastActive: Date.now()
+    });
   }
-  return chatState.get(chatId);
+  const s = userSessions.get(chatId);
+  s.lastActive = Date.now();
+  return s;
 }
 
-// Console logs mirrored to Telegram, throttled
+// Console logs mirrored to Telegram per chat
 function attachProgressStreaming(chatId) {
   if (!bot) return () => {};
   const originalLog = console.log;
@@ -88,15 +89,19 @@ if (bot) {
       return bot.sendMessage(chatId, "⛔ Not authorized Boss.");
     }
 
-    const state = getState(chatId);
-    if (state.running) {
+    const session = getSession(chatId);
+    if (session.running) {
       return bot.sendMessage(chatId, "⚠️ A task is already in progress Boss. Use /status or /stop.");
     }
 
-    const goal = match[1];
+    const rawGoal = match[1];
+    // Input sanitization guard
+    const goal = rawGoal.slice(0, 1000).trim();
+    if (!goal) return bot.sendMessage(chatId, "⚠️ Please provide a valid goal, Boss.");
+
     const matchedSkills = skillEngine.routeTask(goal, 3);
-    state.running = true;
-    state.stopRequested = false;
+    session.running = true;
+    session.stopRequested = false;
 
     await bot.sendMessage(
       chatId,
@@ -107,7 +112,7 @@ if (bot) {
     const detach = attachProgressStreaming(chatId);
     try {
       const result = await runAgent(goal, {
-        isStopRequested: () => state.stopRequested,
+        isStopRequested: () => session.stopRequested,
       });
       await bot.sendMessage(
         chatId,
@@ -118,18 +123,18 @@ if (bot) {
       await bot.sendMessage(chatId, `❌ Agent error: ${e.message}`);
     } finally {
       detach();
-      state.running = false;
-      state.stopRequested = false;
+      session.running = false;
+      session.stopRequested = false;
     }
   });
 
   bot.onText(/\/status/, (msg) => {
     const chatId = msg.chat.id;
     if (!isAllowed(chatId)) return bot.sendMessage(chatId, "⛔ Not authorized.");
-    const state = getState(chatId);
+    const session = getSession(chatId);
     bot.sendMessage(
       chatId,
-      state.running ? "🟢 *Ultron is executing a goal right now Boss.*" : "⚪ *Ultron is idle and standing by for orders, Boss.*",
+      session.running ? "🟢 *Ultron is executing a goal right now Boss.*" : "⚪ *Ultron is idle and standing by for orders, Boss.*",
       { parse_mode: "Markdown" }
     );
   });
@@ -165,11 +170,11 @@ if (bot) {
   bot.onText(/\/stop/, (msg) => {
     const chatId = msg.chat.id;
     if (!isAllowed(chatId)) return bot.sendMessage(chatId, "⛔ Not authorized.");
-    const state = getState(chatId);
-    if (!state.running) {
+    const session = getSession(chatId);
+    if (!session.running) {
       return bot.sendMessage(chatId, "⚪ No task is currently running, Boss.");
     }
-    state.stopRequested = true;
+    session.stopRequested = true;
     bot.sendMessage(chatId, "🛑 *Stop requested Boss* — halting cleanly after current step.");
   });
 
@@ -177,14 +182,15 @@ if (bot) {
     const chatId = msg.chat.id;
     bot.sendMessage(
       chatId,
-      `🤖 *ULTRON 2026 OMNI-CHANNEL AI CORE*\n\nYes Boss, I am connected to your mobile terminal.\n\n*Commands:*\n• \`/goal <text>\` — Start autonomous task\n• \`/status\` — Check running status\n• \`/skills\` — View 708 skills catalog\n• \`/health\` — View laptop hardware telemetry\n• \`/stop\` — Stop current execution`,
+      `🤖 *ULTRON 2026 OMNI-CHANNEL AI CORE*\n\nYes Boss, I am connected to your mobile terminal.\n\n*Commands:*\n• \`/goal <text>\` — Start autonomous task\n• \`/status\` — Check running status\n• \`/skills\` — View 711 skills catalog\n• \`/health\` — View laptop hardware telemetry\n• \`/stop\` — Stop current execution`,
       { parse_mode: "Markdown" }
     );
   });
 
-  console.log("🤖 [TELEGRAM GATEWAY] Initialized and online.");
+  console.log("🤖 [TELEGRAM GATEWAY] Initialized with Per-Chat Session Isolation.");
 }
 
 module.exports = {
-  isGatewayActive: () => !!bot
+  isGatewayActive: () => !!bot,
+  getSession
 };

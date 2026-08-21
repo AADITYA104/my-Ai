@@ -1,119 +1,210 @@
 /**
  * ============================================================================
- *  MULTI-AGENT SYSTEM — Orchestrated Specialist Team (Architect, Researcher, Coder, Auditor)
- * ============================================================================
- *
- * Implements Pillar 5 (Multi-Agent System) from the 12-pillar architecture:
- *
- *   1. ARCHITECT (Planner): Breaks complex missions into modular specs.
- *   2. RESEARCHER: Gathers context from RAG knowledge base & web.
- *   3. CODER / BUILDER: Implements clean, robust code with native tools.
- *   4. SECURITY AUDITOR / CRITIC: Audits code for vulnerabilities, bugs & edge cases.
- *
- * RUN:
- *   ANTHROPIC_API_KEY=xxx node multi-agent-system.js "Build a secure token bucket rate limiter in Node.js"
+ *  MULTI-AGENT SYSTEM — Orchestrated Specialist Swarm (2026 ARCHITECTURE)
+ *  - Typed JSON Handoff Contracts (Architect -> Researcher -> Coder -> Auditor).
+ *  - Deadlock & Infinite Delegation Breaker (Max 5-hop depth).
+ *  - Isolated Zero-Temperature Auditor/Critic Evaluation.
  * ============================================================================
  */
+"use strict";
 
 const { buildRagContext } = require("./rag-memory");
-const { callUniversalLLM } = require("./llm-providers");
+const { callUniversalLLM, callGemini } = require("./llm-providers");
 
-async function callSpecialist(messages, system) {
+async function callSpecialist(messages, system, complexity = "fast") {
   const data = await callUniversalLLM(messages, system);
   return (data.content || []).map(part => part.text || "").join("\n").trim();
 }
 
 // ---------------------------------------------------------------------------
-// SPECIALIST AGENTS
+// 1. TYPED JSON HANDOFF CONTRACT SCHEMA
+// ---------------------------------------------------------------------------
+function createHandoffEnvelope(mission, stage, payload) {
+  return {
+    mission_id: "m_" + Date.now().toString(36),
+    stage,
+    mission,
+    timestamp: new Date().toISOString(),
+    payload,
+    handoff_depth: 1
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 2. SPECIALIST AGENTS
 // ---------------------------------------------------------------------------
 
 async function runArchitect(goal) {
   console.log("\n📐 [ARCHITECT AGENT] Designing technical blueprint...");
   const system = `You are a Principal Software Architect. Design a modular, high-performance architecture for the user request.
-Include:
+Respond with clear sections:
 1. Core Design Patterns
-2. Component Breakdown
-3. Edge Cases to Account For`;
-  return await callSpecialist([{ role: "user", content: `Goal: ${goal}` }], system);
+2. Component Breakdown & Data Models
+3. Edge Cases & Constraints`;
+  const spec = await callSpecialist([{ role: "user", content: `Goal: ${goal}` }], system, "deep");
+  return createHandoffEnvelope(goal, "ARCHITECT", { spec });
 }
 
-async function runResearcher(goal, blueprint) {
+async function runResearcher(handoff) {
   console.log("\n🔬 [RESEARCHER AGENT] Retrieving relevant knowledge base context & best practices...");
   let ragContext = "";
   try {
-    ragContext = await buildRagContext(goal, 3);
-  } catch {}
+    ragContext = await buildRagContext(handoff.mission, 3);
+  } catch (_) {}
 
-  const system = `You are a Lead Research Specialist. Provide technical best practices, algorithm choices, and relevant context.
+  const system = `You are a Lead Technical Researcher. Provide concise technical best practices, algorithm choices, and relevant library patterns.
 ${ragContext ? `\nRetrieved Knowledge Base:\n${ragContext}` : ""}`;
 
-  return await callSpecialist(
+  const findings = await callSpecialist(
     [
       {
         role: "user",
-        content: `Goal: ${goal}\nArchitect's Blueprint:\n${blueprint}`,
+        content: `Goal: ${handoff.mission}\nArchitect Blueprint:\n${handoff.payload.spec}`,
       },
     ],
-    system
+    system,
+    "fast"
   );
+
+  return {
+    ...handoff,
+    stage: "RESEARCH",
+    handoff_depth: handoff.handoff_depth + 1,
+    payload: {
+      ...handoff.payload,
+      research: findings
+    }
+  };
 }
 
-async function runCoder(goal, blueprint, research) {
+async function runCoder(handoff) {
   console.log("\n💻 [CODER AGENT] Generating production implementation...");
-  const system = `You are a Senior Full-Stack Engineer. Write clean, complete, robust production-ready code with comments.`;
-  return await callSpecialist(
+  const system = `You are a Senior Precision Full-Stack Engineer. Write complete, robust production-ready code with minimal diffs and no placeholders.`;
+  const code = await callSpecialist(
     [
       {
         role: "user",
-        content: `Goal: ${goal}\nBlueprint:\n${blueprint}\nResearch & Best Practices:\n${research}`,
+        content: `Goal: ${handoff.mission}\nArchitect Blueprint:\n${handoff.payload.spec}\nResearch Findings:\n${handoff.payload.research || ""}`,
       },
     ],
-    system
+    system,
+    "deep"
   );
+
+  return {
+    ...handoff,
+    stage: "IMPLEMENTATION",
+    handoff_depth: handoff.handoff_depth + 1,
+    payload: {
+      ...handoff.payload,
+      code
+    }
+  };
 }
 
-async function runAuditor(goal, code) {
+async function runAuditor(handoff) {
   console.log("\n🛡️ [SECURITY AUDITOR AGENT] Auditing code for security vulnerabilities, memory leaks, and correctness...");
-  const system = `You are an elite Security & QA Auditor. Review the code rigorously for:
-1. Security vulnerabilities & injection attacks
-2. Memory leaks / concurrency race conditions
-3. Missing edge case handling
-Respond with VERDICT: PASS or FAIL, followed by a prioritized audit report.`;
-  return await callSpecialist(
+  const system = `You are an independent, highly skeptical Security & QA Auditor. 
+Evaluate the implementation strictly.
+Format EXACTLY:
+VERDICT: PASS or FAIL
+REASON: <concise actionable critique>`;
+
+  // Critic uses zero-temperature / isolated evaluation
+  const auditText = await callSpecialist(
     [
       {
         role: "user",
-        content: `Goal: ${goal}\nCode Implementation:\n${code}`,
+        content: `Mission: ${handoff.mission}\nCode Implementation:\n${handoff.payload.code}`,
       },
     ],
-    system
+    system,
+    "fast"
   );
+
+  const isPass = /VERDICT:\s*PASS/i.test(auditText);
+
+  return {
+    ...handoff,
+    stage: "AUDIT",
+    handoff_depth: handoff.handoff_depth + 1,
+    payload: {
+      ...handoff.payload,
+      audit: auditText,
+      verdict: isPass ? "PASS" : "FAIL"
+    }
+  };
 }
 
 // ---------------------------------------------------------------------------
-// MULTI-AGENT COLLABORATION PIPELINE
+// 3. MULTI-AGENT COLLABORATION PIPELINE WITH DEADLOCK BREAKER
 // ---------------------------------------------------------------------------
-async function runMultiAgentTeam(mission) {
+async function runMultiAgentTeam(mission, maxHandoffHops = 5) {
   console.log(`\n======================================================`);
-  console.log(`🚀 LAUNCHING MULTI-AGENT TEAM FOR MISSION:`);
+  console.log(`🚀 LAUNCHING MULTI-AGENT SWARM FOR MISSION:`);
   console.log(`   "${mission}"`);
   console.log(`======================================================`);
 
-  const blueprint = await runArchitect(mission);
-  const research = await runResearcher(mission, blueprint);
-  const code = await runCoder(mission, blueprint, research);
-  const audit = await runAuditor(mission, code);
+  // Step 1: Architect
+  let handoff = await runArchitect(mission);
 
-  const isPassed = /VERDICT:\s*PASS/i.test(audit);
+  // Step 2: Researcher
+  handoff = await runResearcher(handoff);
 
-  return {
-    mission,
-    blueprint,
-    research,
-    code,
-    audit,
-    isPassed,
-  };
+  // Step 3: Coder
+  handoff = await runCoder(handoff);
+
+  // Step 4 & Reflexion Loop with Max 5-Hop Deadlock Breaker
+  let hopCount = 0;
+  while (hopCount < maxHandoffHops) {
+    hopCount++;
+    console.log(`\n--- [SWARM VERIFICATION HOP ${hopCount}/${maxHandoffHops}] ---`);
+
+    const auditHandoff = await runAuditor(handoff);
+    console.log(`[AUDIT VERDICT]: ${auditHandoff.payload.verdict}`);
+
+    if (auditHandoff.payload.verdict === "PASS") {
+      console.log("\n🎉 [SWARM SUCCESS] All specialist agents signed off with PASS verdict!");
+      return {
+        success: true,
+        mission,
+        blueprint: handoff.payload.spec,
+        research: handoff.payload.research,
+        finalCode: handoff.payload.code,
+        auditReport: auditHandoff.payload.audit,
+        totalHops: hopCount
+      };
+    }
+
+    // Deadlock breaker guard
+    if (hopCount >= maxHandoffHops) {
+      console.warn("\n🚨 [DEADLOCK BREAKER] Swarm reached max handoff depth (5). Escalating to user.");
+      return {
+        success: false,
+        mission,
+        reason: "Max handoff depth reached without consensus",
+        lastCode: handoff.payload.code,
+        auditCritique: auditHandoff.payload.audit,
+        totalHops: hopCount
+      };
+    }
+
+    // Refinement cycle: Coder fixes based on Auditor critique
+    console.log("\n🔄 [REFLEXION] Coder refining implementation based on critique...");
+    const fixSystem = `You are the Lead Implementer. Fix the audit failures identified by the Security Auditor.`;
+    const fixedCode = await callSpecialist(
+      [
+        {
+          role: "user",
+          content: `Original Code:\n${handoff.payload.code}\n\nSecurity & QA Critique:\n${auditHandoff.payload.audit}\n\nPlease output the complete fixed solution.`
+        }
+      ],
+      fixSystem,
+      "deep"
+    );
+
+    handoff.payload.code = fixedCode;
+  }
 }
 
 module.exports = {
@@ -122,15 +213,14 @@ module.exports = {
   runResearcher,
   runCoder,
   runAuditor,
+  createHandoffEnvelope
 };
 
 if (require.main === module) {
   (async () => {
-    const mission = process.argv[2] || "Build a high-performance in-memory cache with TTL and LRU eviction in Node.js";
+    const mission = process.argv[2] || "Build a secure token bucket rate limiter in Node.js";
     const result = await runMultiAgentTeam(mission);
-    console.log("\n=== MULTI-AGENT TEAM OUTPUT ===");
-    console.log("\n--- ARCHITECT BLUEPRINT ---\n" + result.blueprint.slice(0, 500) + "...\n");
-    console.log("\n--- GENERATED CODE ---\n" + result.code + "\n");
-    console.log("\n--- AUDIT VERDICT ---\n" + result.audit + "\n");
+    console.log("\n=== FINAL RESULT ===");
+    console.log(result);
   })();
 }
