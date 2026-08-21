@@ -55,6 +55,7 @@ class UnifiedSkillEngine {
 
       // Category matching
       if (/ui|design|css|frontend|html|animate|scroll|visual/i.test(lowerTask) && skill.category === "design_frontend") score += 8;
+      if (/3d|mesh|glb|obj|texture|model|render|blender|hunyuan/i.test(lowerTask) && (skill.category === "generative_3d_modeling" || skill.category === "design_frontend")) score += 10;
       if (/security|vuln|auth|guard|hack|pentest/i.test(lowerTask) && skill.category === "security_guard") score += 8;
       if (/code|refactor|fix|bug|debug|function|test|error/i.test(lowerTask) && skill.category === "coding_architecture") score += 8;
       if (/swarm|multi|team|agent|workflow/i.test(lowerTask) && skill.category === "multi_agent_swarm") score += 8;
@@ -147,7 +148,8 @@ Automatic checkpoints and syntax validation are active.
       sources: [
         "impeccable", "ruflo", "gstack", "prime-agent", "taste-skill", "scroll-world",
         "turbovec", "strix", "awesome-llm-apps", "OpenSandbox", "skills-main",
-        "ponytail", "Agent-Reach", "system-design-primer", "build-your-own-x", "airllm"
+        "ponytail", "Agent-Reach", "system-design-primer", "build-your-own-x", "airllm",
+        "Hunyuan3D-2"
       ]
     };
   }
