@@ -84,12 +84,21 @@ async function callGemini(messages, system, tools = null, complexity = "fast") {
     }
   }
 
+  const generationConfig = {
+    temperature: complexity === "deep" ? 0.2 : 0.3,
+    maxOutputTokens: complexity === "deep" ? 8000 : 2000
+  };
+
+  // Native Adaptive Thinking Budget
+  if (complexity === "deep") {
+    generationConfig.thinkingConfig = {
+      thinkingBudget: 2048
+    };
+  }
+
   const payload = {
     contents,
-    generationConfig: {
-      temperature: complexity === "deep" ? 0.2 : 0.3,
-      maxOutputTokens: complexity === "deep" ? 4000 : 2000
-    }
+    generationConfig
   };
 
   if (system) {
