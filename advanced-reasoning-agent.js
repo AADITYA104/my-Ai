@@ -2,6 +2,8 @@
  * ============================================================================
  *  ADVANCED REASONING AGENT (2026 ARCHITECTURE)
  *  Actor + Adversarial Critic + Polisher Reflexion Swarm Loop
+ *  - Integrates Dynamic Task Classifier & Recency Constraints.
+ *  - 711 Skills Pass-Through & Session Continuity Grounding.
  * ============================================================================
  */
 "use strict";
@@ -9,6 +11,7 @@
 const { callUniversalLLM } = require("./llm-providers");
 const skillEngine = require("./unified-skill-engine");
 const sessionContinuity = require("./session-continuity");
+const { getTaskConfig, injectRecencyConstraints } = require("./task-classifier");
 
 async function solveWithCritic(prompt, doneCriteria = "Must be 100% complete, bug-free, and satisfy the user's request", maxAttempts = 3) {
   console.log(`\n🎯 [REASONING SWARM] Task: ${prompt}`);
@@ -17,6 +20,9 @@ async function solveWithCritic(prompt, doneCriteria = "Must be 100% complete, bu
   let attempts = 0;
   let feedback = "";
   let lastSolution = "";
+
+  const taskConfig = getTaskConfig(prompt);
+  console.log(`🧭 [CLASSIFICATION]: ${taskConfig.taskType.toUpperCase()} (Temp: ${taskConfig.temperature})`);
 
   // Dynamic Skill Pass-Through
   const matchedSkills = skillEngine.routeTask(prompt, 3);
@@ -29,12 +35,14 @@ async function solveWithCritic(prompt, doneCriteria = "Must be 100% complete, bu
     console.log(`\n--- [SWARM CYCLE ${attempts}/${maxAttempts}] ---`);
 
     // 1. ACTOR AGENT
-    const actorSystem = `You are the Lead Solution Architect and Precision Coder.
+    let actorSystem = `You are the Lead Solution Architect and Precision Coder.
 Provide a complete, production-ready, 100% working solution.
 Follow Ponytail minimal-diff rules (fix root causes, no unneeded boilerplate).
 Never truncate code or output.
 ${skillPromptSnippet}
 ${feedback ? `\n[CRITICAL]: Previous attempt failed with critique:\n${feedback}\nFix these issues carefully.` : ""}`;
+
+    actorSystem = injectRecencyConstraints(actorSystem, taskConfig);
 
     const actorRes = await callUniversalLLM([{ role: "user", content: prompt }], actorSystem);
     const textBlock = (actorRes.content || []).find(b => b.type === "text");
