@@ -21,7 +21,7 @@
   <!-- Fullscreen 3D Canvas -->
   <div id="canvas-container"></div>
 
-  <!-- Minimal Sleek Top Holographic Status (No Clunky Dashboard) -->
+  <!-- Minimal Sleek Top Holographic Status -->
   <header class="hologram-nav">
     <div class="brand">
       <div class="core-indicator"></div>
@@ -39,6 +39,10 @@
       <button id="cam-btn" class="holo-pill" title="Toggle Hand Gesture Tracking">
         <span class="icon">📷</span>
         <span class="lbl" id="cam-lbl">GESTURES</span>
+      </button>
+      <button id="term-btn" class="holo-pill" title="Toggle Real-Time Terminal HUD">
+        <span class="icon">📟</span>
+        <span class="lbl">TERMINAL</span>
       </button>
       <button id="chat-btn" class="holo-pill" title="Toggle Chat Console">
         <span class="icon">💬</span>
@@ -67,6 +71,23 @@
     <div class="pip-tip" id="pip-tip">Show hand to rotate & scale</div>
   </div>
 
+  <!-- Real-Time Holographic Terminal HUD (Floating Bottom Left) -->
+  <div id="holo-terminal" class="holo-terminal-panel hidden">
+    <div class="term-header">
+      <div class="title-group">
+        <span class="dot-green"></span>
+        <span>ULTRON // LIVE TASK STREAM</span>
+      </div>
+      <div class="term-controls">
+        <button id="clear-term" class="term-btn-icon" title="Clear Logs">🧹</button>
+        <button id="close-term" class="term-btn-icon" title="Close">&times;</button>
+      </div>
+    </div>
+    <div class="term-body" id="term-logs">
+      <div class="term-line sys">⚡ [SYSTEM] Neural SSE Stream Initialized. Ready for task output Boss...</div>
+    </div>
+  </div>
+
   <!-- Floating Hologram Chat Overlay (Clean & Futuristic) -->
   <div id="holo-chat-overlay" class="holo-chat-overlay hidden">
     <div class="chat-glass-panel">
@@ -85,8 +106,19 @@
         </div>
       </div>
 
+      <!-- Image Preview Thumbnail inside Chat -->
+      <div id="image-preview-container" class="image-preview-container hidden">
+        <div class="preview-badge">
+          <img id="image-preview-thumb" src="" alt="Attached Preview" />
+          <span class="preview-name" id="preview-filename">image.png</span>
+          <button id="remove-image-btn" type="button" class="remove-btn">&times;</button>
+        </div>
+      </div>
+
       <form id="chat-input-form" class="chat-input-bar">
-        <input type="text" id="chat-input-field" placeholder="Type an order or ask a question in any language, Boss..." autocomplete="off" />
+        <input type="file" id="vision-file-input" accept="image/*" class="hidden" />
+        <button type="button" id="attach-img-btn" class="attach-btn" title="Attach Image / Screenshot for Vision AI">📎</button>
+        <input type="text" id="chat-input-field" placeholder="Type an order, paste screenshot, or ask in any language, Boss..." autocomplete="off" />
         <button type="submit" class="transmit-btn">SEND</button>
       </form>
     </div>

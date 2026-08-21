@@ -47,16 +47,40 @@ async function callGemini(messages, system, tools = null, complexity = "fast") {
   const contents = [];
   for (const m of messages) {
     const role = m.role === "assistant" ? "model" : "user";
+    const parts = [];
+
     if (typeof m.content === "string") {
-      contents.push({ role, parts: [{ text: m.content }] });
+      parts.push({ text: m.content });
     } else if (Array.isArray(m.content)) {
-      const parts = [];
       for (const part of m.content) {
-        if (part.type === "text") parts.push({ text: part.text });
-        else if (part.type === "tool_use") parts.push({ functionCall: { name: part.name, args: part.input || {} } });
-        else if (part.type === "tool_result") parts.push({ functionResponse: { name: part.tool_name || "tool", response: { output: part.content } } });
+        if (part.type === "text") {
+          parts.push({ text: part.text });
+        } else if (part.type === "image" || part.type === "image_url") {
+          const mimeType = part.mimeType || part.mime_type || "image/png";
+          const rawData = part.data || part.base64 || (part.image_url?.url || "");
+          const cleanData = rawData.replace(/^data:image\/[a-zA-Z+]+;base64,/, "");
+          if (cleanData) {
+            parts.push({ inlineData: { mimeType, data: cleanData } });
+          }
+        } else if (part.type === "tool_use") {
+          parts.push({ functionCall: { name: part.name, args: part.input || {} } });
+        } else if (part.type === "tool_result") {
+          parts.push({ functionResponse: { name: part.tool_name || "tool", response: { output: part.content } } });
+        }
       }
-      if (parts.length > 0) contents.push({ role, parts });
+    }
+
+    if (m.image) {
+      const mimeType = m.image.mimeType || "image/png";
+      const rawData = typeof m.image === "string" ? m.image : (m.image.data || "");
+      const cleanData = rawData.replace(/^data:image\/[a-zA-Z+]+;base64,/, "");
+      if (cleanData) {
+        parts.push({ inlineData: { mimeType, data: cleanData } });
+      }
+    }
+
+    if (parts.length > 0) {
+      contents.push({ role, parts });
     }
   }
 

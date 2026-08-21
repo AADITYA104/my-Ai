@@ -130,14 +130,14 @@ async function processHeardVoice(transcript) {
   }
 }
 
-async function sendQueryToUltron(promptText, speakBack = true, alreadyAppendedUser = false) {
+async function sendQueryToUltron(promptText, speakBack = true, alreadyAppendedUser = false, image = null) {
   try {
     if (speechSubtitle) speechSubtitle.innerText = "Processing order, Boss...";
 
     const res = await fetch("/api/ultron/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: promptText })
+      body: JSON.stringify({ message: promptText, image })
     });
 
     const data = await res.json();
@@ -149,7 +149,7 @@ async function sendQueryToUltron(promptText, speakBack = true, alreadyAppendedUs
 
     if (window.appendChatEntry) {
       if (!alreadyAppendedUser) {
-        window.appendChatEntry("user", promptText);
+        window.appendChatEntry("user", promptText, image);
       }
       window.appendChatEntry("ultron", reply);
     }
@@ -175,12 +175,13 @@ function ultronSpeak(text) {
   }
 
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1.08;
-  utterance.pitch = 0.96;
+  utterance.rate = 1.05;
+  utterance.pitch = 0.95;
 
   // Find best natural voice
   const voices = window.speechSynthesis.getVoices();
-  const naturalVoice = voices.find(v => v.lang.includes("en-US") || v.lang.includes("en-GB") || v.lang.includes("hi-IN"));
+  const naturalVoice = voices.find(v => v.name.includes("Natural") || v.name.includes("Google") || v.name.includes("Online") || v.name.includes("Neural")) ||
+                       voices.find(v => v.lang.includes("en-US") || v.lang.includes("en-GB") || v.lang.includes("hi-IN"));
   if (naturalVoice) utterance.voice = naturalVoice;
 
   utterance.onstart = () => {
