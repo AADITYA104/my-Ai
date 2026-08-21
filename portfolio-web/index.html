@@ -1,576 +1,693 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="no-js">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Aditya Devmurari // Full Stack & Autonomous AI Systems Architect</title>
-  <meta name="description" content="3D Interactive Storytelling Portfolio of Aditya Devmurari — Full Stack Developer, Autonomous AI Engineer & R&D Architect.">
-  
-  <!-- Fonts -->
+  <title>Aditya Devmurari // Autonomous AI & Full Stack Systems Architect</title>
+  <meta name="description" content="Cinematic 3D Storytelling Portfolio of Aditya Devmurari — R&D Engineer, Autonomous Multi-Agent Swarm Architect, and Full Stack Protocol Builder.">
+
+  <!-- Editorial & Cybernetic Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
-  
+  <link href="https://fonts.googleapis.com/css2?family=Clash+Display:wght@500;600;700&family=Syne:wght@700;800;900&family=Orbitron:wght@600;800;900&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+
   <!-- Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  
-  <!-- Main Stylesheet -->
+
+  <!-- Stylesheet -->
   <link rel="stylesheet" href="style.css">
-  
-  <!-- Three.js (Optimized WebGL) & GSAP -->
+
+  <!-- Core Libraries: Three.js, GSAP & ScrollTrigger -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
 </head>
-<body class="cyber-dark">
+<body class="cinema-body">
 
-  <!-- Magnetic Custom Cursor -->
-  <div id="cursor-dot" class="cursor-dot"></div>
-  <div id="cursor-ring" class="cursor-ring"></div>
+  <!-- SVG Noise Film Grain Overlay (Eliminates flat AI look) -->
+  <div class="film-grain-overlay"></div>
 
-  <!-- Background WebGL 3D Canvas -->
-  <div id="webgl-container"></div>
+  <!-- Custom Fluid Magnetic Cursor -->
+  <div id="cursor-core" class="cursor-core"></div>
+  <div id="cursor-halo" class="cursor-halo"></div>
 
-  <!-- Ambient Audio & Controls Bar -->
-  <nav class="quantum-navbar">
-    <div class="nav-brand">
-      <div class="brand-glyph">
-        <span class="glyph-core"></span>
-      </div>
-      <div class="brand-name">
-        <span class="primary">ADITYA</span>
-        <span class="secondary">DEVMURARI</span>
-      </div>
-    </div>
+  <!-- WebGL 3D Canvas Viewport -->
+  <canvas id="webgl-canvas"></canvas>
 
-    <div class="nav-links">
-      <a href="#chapter-genesis" class="nav-item active"><span class="num">01</span> GENESIS</a>
-      <a href="#chapter-evolution" class="nav-item"><span class="num">02</span> EVOLUTION</a>
-      <a href="#chapter-vault" class="nav-item"><span class="num">03</span> PROJECTS</a>
-      <a href="#chapter-skills" class="nav-item"><span class="num">04</span> SKILLS</a>
-      <a href="#chapter-matrix" class="nav-item"><span class="num">05</span> IMPACT</a>
-      <a href="#chapter-terminal" class="nav-item"><span class="num">06</span> TERMINAL</a>
-    </div>
-
-    <div class="nav-actions">
-      <button id="sound-toggle" class="btn-icon" title="Toggle Futuristic Audio Synthesizer">
-        <i class="fa-solid fa-volume-high" id="sound-icon"></i>
-        <span class="badge-live">FX ON</span>
-      </button>
-      <a href="#chapter-terminal" class="btn-quantum primary-cta">
-        <span class="btn-glow"></span>
-        <i class="fa-solid fa-bolt"></i> INITIATE CONTACT
+  <!-- Editorial Top Navigation Header -->
+  <header class="cinema-nav">
+    <div class="nav-left">
+      <a href="#act-genesis" class="brand-link">
+        <div class="brand-monogram">AD</div>
+        <div class="brand-meta">
+          <span class="name">ADITYA DEVMURARI</span>
+          <span class="role">SOVEREIGN AI & FULL STACK ARCHITECT</span>
+        </div>
       </a>
     </div>
-  </nav>
 
-  <!-- Floating Scroll Progress HUD -->
-  <div class="scroll-tracker-hud">
-    <div class="tracker-line">
-      <div class="tracker-fill" id="scroll-progress-fill"></div>
+    <div class="nav-center">
+      <div class="nav-indicator-pill">
+        <span class="live-pulse"></span>
+        <span class="pill-text" id="live-hud-chapter">ACT I // THE SINGULARITY</span>
+      </div>
     </div>
-    <div class="chapter-indicator" id="current-chapter-lbl">CH.01 // GENESIS</div>
-  </div>
 
-  <!-- MAIN STORYTELLING CONTAINER -->
-  <main class="story-wrapper">
+    <div class="nav-right">
+      <div class="sound-switch" id="ambient-audio-toggle" title="Toggle Synthesized Cyber Ambient Soundtrack">
+        <div class="sound-bars">
+          <span class="sbar"></span><span class="sbar"></span><span class="sbar"></span><span class="sbar"></span>
+        </div>
+        <span class="sound-label" id="sound-label">AUDIO ON</span>
+      </div>
+      <a href="#act-uplink" class="btn-uplink">
+        <span class="btn-shine"></span>
+        <i class="fa-solid fa-satellite-dish"></i> DIRECT UPLINK
+      </a>
+    </div>
+  </header>
 
-    <!-- ===================================================================== -->
-    <!-- CHAPTER 1: THE QUANTUM GENESIS (HERO) -->
-    <!-- ===================================================================== -->
-    <section id="chapter-genesis" class="story-chapter hero-chapter">
-      <div class="chapter-content">
-        <div class="hero-eyebrow">
-          <span class="pulse-indicator"></span>
-          <span class="eyebrow-text">SOVEREIGN AI ARCHITECT & FULL STACK ENGINEER</span>
+  <!-- Side Editorial Coordinate & Telemetry Watermark -->
+  <aside class="side-telemetry-hud">
+    <div class="hud-coord">LAT 21.7645° N // LON 72.1519° E</div>
+    <div class="hud-timeline">
+      <div class="timeline-track">
+        <div class="timeline-thumb" id="scroll-timeline-thumb"></div>
+      </div>
+      <span class="timeline-counter" id="scroll-pct-counter">000%</span>
+    </div>
+    <div class="hud-system">SYS.2026 // DUAL-ENGINE ACTIVE</div>
+  </aside>
+
+  <!-- MAIN SCROLLYTELLING CONTAINER -->
+  <main class="cinema-storyboard">
+
+    <!-- ================================================================= -->
+    <!-- ACT I: THE QUANTUM GENESIS (AWAKENING & MANIFESTO) -->
+    <!-- ================================================================= -->
+    <section id="act-genesis" class="story-act hero-act" data-act="01">
+      <div class="act-inner">
+        <div class="act-eyebrow" data-reveal>
+          <span class="tag-accent"><i class="fa-solid fa-sparkles"></i> 2026 ARCHITECTURAL PORTFOLIO</span>
+          <span class="tag-loc"><i class="fa-solid fa-location-dot"></i> GUJARAT, INDIA</span>
         </div>
 
-        <h1 class="hero-title">
-          ARCHITECTING <br>
-          <span class="gradient-text neon-cyan">INTELLIGENT AGENTS</span> & <br>
-          <span class="gradient-text neon-purple">DECENTRALIZED SYSTEMS</span>
+        <h1 class="hero-manifesto" data-reveal>
+          <span class="line-block">WE DO NOT JUST WRITE CODE.</span>
+          <span class="line-block glow-cyan">WE ARCHITECT COGNITIVE</span>
+          <span class="line-block glow-violet">AUTONOMOUS SWARMS.</span>
         </h1>
 
-        <p class="hero-description">
-          Bridging deep research experimentation with ruthless product execution. 
-          Specializing in <strong>Autonomous Multi-Agent Swarms</strong>, <strong>High-Accuracy ML Pipelines</strong>, 
-          and <strong>Zero-Drift Full Stack Applications</strong>.
+        <p class="hero-lead-text" data-reveal>
+          I am <strong>Aditya Devmurari</strong> — a full-stack engineer and AI systems researcher who refuses the compromise between experimental depth and production-grade shipping. From zero-drift agentic loops to EIP-712 cryptographic protocols, I build software that endures.
         </p>
 
-        <div class="hero-metrics-strip">
-          <div class="metric-card">
-            <span class="metric-val">2+</span>
-            <span class="metric-lbl">Years R&D & AI Eng</span>
+        <!-- Live Impact Radar -->
+        <div class="hero-proof-grid" data-reveal>
+          <div class="proof-block">
+            <span class="proof-number" data-count="2">2+</span>
+            <span class="proof-title">YEARS R&D & SYSTEMS</span>
+            <span class="proof-detail">Spearheaded 4+ innovation prototypes</span>
           </div>
-          <div class="metric-card">
-            <span class="metric-val">95%</span>
-            <span class="metric-lbl">ML Predictive Accuracy</span>
+          <div class="proof-block">
+            <span class="proof-number" data-count="95">95%</span>
+            <span class="proof-title">ML PREDICTIVE ACCURACY</span>
+            <span class="proof-detail">Engineered at Mexgen Technologies</span>
           </div>
-          <div class="metric-card">
-            <span class="metric-val">717+</span>
-            <span class="metric-lbl">Engineered AI Skills</span>
+          <div class="proof-block">
+            <span class="proof-number" data-count="717">717+</span>
+            <span class="proof-title">AUTONOMOUS AGENT SKILLS</span>
+            <span class="proof-detail">Cataloged in Ultron Master Registry</span>
           </div>
-          <div class="metric-card">
-            <span class="metric-val">-40%</span>
-            <span class="metric-lbl">Triage Latency Reduced</span>
+          <div class="proof-block">
+            <span class="proof-number" data-count="40">-40%</span>
+            <span class="proof-title">CLINICAL TRIAGE LATENCY</span>
+            <span class="proof-detail">User-facing healthcare AI agent</span>
           </div>
         </div>
 
-        <div class="hero-cta-group">
-          <a href="#chapter-vault" class="btn-quantum primary-cta">
-            <i class="fa-solid fa-rocket"></i> EXPLORE FLAGSHIP BUILDS
+        <div class="hero-actions" data-reveal>
+          <a href="#act-forge" class="btn-action primary">
+            <span>EXPLORE ARCHITECTURE VAULT</span>
+            <i class="fa-solid fa-arrow-down-long"></i>
           </a>
-          <a href="https://github.com/AADITYA104" target="_blank" class="btn-quantum ghost-cta">
-            <i class="fa-brands fa-github"></i> GITHUB PROFILE
+          <a href="https://github.com/AADITYA104" target="_blank" class="btn-action outline">
+            <i class="fa-brands fa-github"></i>
+            <span>GITHUB MATRIX</span>
           </a>
-          <a href="https://linkedin.com/in/devmurari-aditya" target="_blank" class="btn-quantum ghost-cta">
-            <i class="fa-brands fa-linkedin"></i> LINKEDIN
+          <a href="https://linkedin.com/in/devmurari-aditya" target="_blank" class="btn-action outline">
+            <i class="fa-brands fa-linkedin-in"></i>
+            <span>LINKEDIN</span>
           </a>
         </div>
       </div>
 
-      <div class="scroll-down-hint">
-        <span class="mouse-icon"><span class="mouse-wheel"></span></span>
-        <span class="hint-text">SCROLL TO ENTER EVOLUTION TIMELINE</span>
+      <div class="scroll-director-hint">
+        <div class="director-pulse"></div>
+        <span>SCROLL DOWN TO DIVE INTO THE CRUCIBLE OF R&D</span>
       </div>
     </section>
 
-    <!-- ===================================================================== -->
-    <!-- CHAPTER 2: THE EVOLUTION TIMELINE (CAREER & R&D) -->
-    <!-- ===================================================================== -->
-    <section id="chapter-evolution" class="story-chapter timeline-chapter">
-      <div class="section-header">
-        <div class="section-tag"><i class="fa-solid fa-code-branch"></i> CHAPTER 02</div>
-        <h2 class="section-heading">THE CHRONOLOGICAL <span class="gradient-text neon-cyan">EVOLUTION</span></h2>
-        <p class="section-sub">From pioneering academic R&D to deploying production AI swarms and blockchain protocol systems.</p>
-      </div>
+    <!-- ================================================================= -->
+    <!-- ACT II: THE CRUCIBLE OF EVOLUTION (CAREER & RESEARCH MILESTONES) -->
+    <!-- ================================================================= -->
+    <section id="act-crucible" class="story-act timeline-act" data-act="02">
+      <div class="act-inner">
+        <div class="section-lead-header" data-reveal>
+          <div class="act-chapter-tag">ACT 02 // CHRONICLED TRAJECTORY</div>
+          <h2 class="act-title">THE CRUCIBLE OF <span class="glow-cyan">EVOLUTION</span></h2>
+          <p class="act-description">
+            Great systems are forged under real-world constraints. Here is the trajectory of how research theory transformed into production resilience.
+          </p>
+        </div>
 
-      <div class="timeline-container">
-        <div class="timeline-spine"></div>
-
-        <!-- Node 1: Aksharraj Infotech -->
-        <div class="timeline-node" data-aos="fade-right">
-          <div class="node-marker"><i class="fa-solid fa-cube"></i></div>
-          <div class="node-card glass-panel">
-            <div class="node-date">FEB 2026 — APR 2026</div>
-            <h3 class="node-title">Full Stack Developer Intern</h3>
-            <h4 class="node-company">Aksharraj Infotech <span class="loc"><i class="fa-solid fa-location-dot"></i> Gujarat, India</span></h4>
-            <p class="node-desc">Architected end-to-end decentralized workflows on <strong>ETH.VOTE</strong>, uniting Web3 smart contract signing with modern Next.js and FastAPI backends.</p>
-            <ul class="node-bullets">
-              <li>Engineered EIP-712 structured cryptographic signatures preventing Sybil attacks and vote tampering.</li>
-              <li>Collaborated in rapid Agile sprint iterations to streamline DApp latency and security.</li>
-            </ul>
-            <div class="tech-tags">
-              <span>Solidity</span><span>Web3.js</span><span>Next.js</span><span>FastAPI</span><span>EIP-712</span>
+        <div class="interactive-chronicle">
+          
+          <!-- Milestone 1: Aksharraj Infotech -->
+          <article class="chronicle-card glass-morph" data-reveal>
+            <div class="card-rail">
+              <span class="rail-badge">01</span>
+              <span class="rail-date">FEB 2026 — APR 2026</span>
             </div>
-          </div>
-        </div>
-
-        <!-- Node 2: GMIU Research & Development -->
-        <div class="timeline-node" data-aos="fade-left">
-          <div class="node-marker"><i class="fa-solid fa-microchip"></i></div>
-          <div class="node-card glass-panel">
-            <div class="node-date">FEB 2024 — JAN 2026</div>
-            <h3 class="node-title">Research & Development Engineer</h3>
-            <h4 class="node-company">Gyanmanjari Innovative University (GMIU) <span class="loc"><i class="fa-solid fa-location-dot"></i> Gujarat, India</span></h4>
-            <p class="node-desc">Spearheaded full R&D ownership across 4+ core innovation projects focusing on systems scalability, asynchronous data processing, and student mentorship.</p>
-            <ul class="node-bullets">
-              <li>Architected a high-throughput prototype system improving data processing speeds by <strong>30%</strong>.</li>
-              <li>Mentored 10+ junior developers across complete SDLC methodologies and architectural design.</li>
-            </ul>
-            <div class="tech-tags">
-              <span>Systems R&D</span><span>Python</span><span>Performance Eng</span><span>Mentorship</span>
+            <div class="card-main">
+              <div class="card-org-row">
+                <h3 class="role-name">Full Stack Developer Intern</h3>
+                <span class="org-name">Aksharraj Infotech</span>
+              </div>
+              <p class="narrative-body">
+                Entrusted with end-to-end full stack architecture for <strong>ETH.VOTE</strong>. Bridged complex off-chain Next.js & FastAPI backend architectures with on-chain Ethereum smart contract interactions.
+              </p>
+              <div class="breakthrough-box">
+                <span class="bt-label"><i class="fa-solid fa-bolt"></i> KEY BREAKTHROUGH:</span>
+                <p>Implemented EIP-712 structured cryptographic signatures, eliminating vote-replay vulnerabilities and reducing on-chain gas overhead for thousands of participants.</p>
+              </div>
+              <div class="badge-row">
+                <span>Solidity</span><span>Web3.js</span><span>Next.js</span><span>FastAPI</span><span>EIP-712</span><span>Cryptography</span>
+              </div>
             </div>
-          </div>
-        </div>
+          </article>
 
-        <!-- Node 3: Mexgen Technologies -->
-        <div class="timeline-node" data-aos="fade-right">
-          <div class="node-marker"><i class="fa-solid fa-brain"></i></div>
-          <div class="node-card glass-panel">
-            <div class="node-date">JUL 2025 — JAN 2026</div>
-            <h3 class="node-title">Junior AI / ML Developer</h3>
-            <h4 class="node-company">Mexgen Technologies Pvt. Ltd. <span class="loc"><i class="fa-solid fa-location-dot"></i> Gujarat, India</span></h4>
-            <p class="node-desc">Engineered applied machine learning models and production conversational agent integrations for enterprise business process automation.</p>
-            <ul class="node-bullets">
-              <li>Optimized predictive data pipelines achieving <strong>95% predictive accuracy</strong>.</li>
-              <li>Automated data entry workflows, reducing manual operations by <strong>20%</strong>.</li>
-            </ul>
-            <div class="tech-tags">
-              <span>Machine Learning</span><span>AI Agents</span><span>Scikit-learn</span><span>Data Pipelines</span>
+          <!-- Milestone 2: GMIU Innovation R&D -->
+          <article class="chronicle-card glass-morph" data-reveal>
+            <div class="card-rail">
+              <span class="rail-badge">02</span>
+              <span class="rail-date">FEB 2024 — JAN 2026</span>
             </div>
-          </div>
-        </div>
-
-        <!-- Node 4: IT Hub -->
-        <div class="timeline-node" data-aos="fade-left">
-          <div class="node-marker"><i class="fa-solid fa-laptop-code"></i></div>
-          <div class="node-card glass-panel">
-            <div class="node-date">NOV 2024 — DEC 2024</div>
-            <h3 class="node-title">Front End Developer</h3>
-            <h4 class="node-company">IT Hub <span class="loc"><i class="fa-solid fa-location-dot"></i> Gujarat, India</span></h4>
-            <p class="node-desc">Built modular, high-speed frontend applications with 100% cross-browser fidelity and optimized asset rendering pipelines.</p>
-            <ul class="node-bullets">
-              <li>Reduced initial page load times by <strong>15%</strong> through frontend bundle optimization.</li>
-              <li>Engineered interactive UI components adhering strictly to responsive web standards.</li>
-            </ul>
-            <div class="tech-tags">
-              <span>JavaScript</span><span>React.js</span><span>CSS3 / HTML5</span><span>Web Perf</span>
+            <div class="card-main">
+              <div class="card-org-row">
+                <h3 class="role-name">Research & Development Engineer</h3>
+                <span class="org-name">Gyanmanjari Innovative University (GMIU)</span>
+              </div>
+              <p class="narrative-body">
+                Spearheaded exploratory architecture for 4+ university innovation initiatives. Investigated asynchronous distributed execution models, low-latency data structures, and developer tooling.
+              </p>
+              <div class="breakthrough-box">
+                <span class="bt-label"><i class="fa-solid fa-bolt"></i> KEY BREAKTHROUGH:</span>
+                <p>Architected prototype data processing engine yielding a <strong>30% throughput speedup</strong>. Actively mentored 10+ junior developers across full-lifecycle SDLC and architectural principles.</p>
+              </div>
+              <div class="badge-row">
+                <span>Systems R&D</span><span>Python</span><span>High-Throughput</span><span>Mentorship</span><span>Architecture</span>
+              </div>
             </div>
-          </div>
-        </div>
+          </article>
 
-      </div>
-    </section>
+          <!-- Milestone 3: Mexgen Technologies -->
+          <article class="chronicle-card glass-morph" data-reveal>
+            <div class="card-rail">
+              <span class="rail-badge">03</span>
+              <span class="rail-date">JUL 2025 — JAN 2026</span>
+            </div>
+            <div class="card-main">
+              <div class="card-org-row">
+                <h3 class="role-name">Junior AI / ML Developer</h3>
+                <span class="org-name">Mexgen Technologies Pvt. Ltd.</span>
+              </div>
+              <p class="narrative-body">
+                Engineered applied machine learning models and intelligent agent automation workflows designed to eliminate manual data entry bottlenecks in enterprise operations.
+              </p>
+              <div class="breakthrough-box">
+                <span class="bt-label"><i class="fa-solid fa-bolt"></i> KEY BREAKTHROUGH:</span>
+                <p>Reached <strong>95% predictive modeling precision</strong> on business data pipelines and achieved a 20% direct reduction in manual operational labor via autonomous workflow integration.</p>
+              </div>
+              <div class="badge-row">
+                <span>Machine Learning</span><span>AI Agents</span><span>Scikit-learn</span><span>Data Pipelines</span><span>FastAPI</span>
+              </div>
+            </div>
+          </article>
 
-    <!-- ===================================================================== -->
-    <!-- CHAPTER 3: THE FLAGSHIP PROJECT VAULT -->
-    <!-- ===================================================================== -->
-    <section id="chapter-vault" class="story-chapter projects-chapter">
-      <div class="section-header">
-        <div class="section-tag"><i class="fa-solid fa-layer-group"></i> CHAPTER 03</div>
-        <h2 class="section-heading">THE FLAGSHIP <span class="gradient-text neon-cyan">PROJECT VAULT</span></h2>
-        <p class="section-sub">Autonomous AI swarms, decentralized protocols, threat anomaly engines, and medical triage intelligence.</p>
-      </div>
+          <!-- Milestone 4: IT Hub -->
+          <article class="chronicle-card glass-morph" data-reveal>
+            <div class="card-rail">
+              <span class="rail-badge">04</span>
+              <span class="rail-date">NOV 2024 — DEC 2024</span>
+            </div>
+            <div class="card-main">
+              <div class="card-org-row">
+                <h3 class="role-name">Front End Developer</h3>
+                <span class="org-name">IT Hub</span>
+              </div>
+              <p class="narrative-body">
+                Constructed high-speed responsive user interfaces with modular JavaScript and React component systems, focusing strictly on sub-second rendering and fluid typography.
+              </p>
+              <div class="breakthrough-box">
+                <span class="bt-label"><i class="fa-solid fa-bolt"></i> KEY BREAKTHROUGH:</span>
+                <p>Achieved 100% cross-browser fidelity and optimized client bundles to reduce initial page load times by <strong>15%</strong> across mobile and desktop viewports.</p>
+              </div>
+              <div class="badge-row">
+                <span>React.js</span><span>JavaScript (ES6+)</span><span>CSS3 / HTML5</span><span>Web Perf</span>
+              </div>
+            </div>
+          </article>
 
-      <div class="projects-grid">
-        
-        <!-- Project 1: ULTRON 2026 -->
-        <div class="project-card glass-panel 3d-tilt" data-category="ai">
-          <div class="card-glow"></div>
-          <div class="card-header">
-            <div class="project-badge flagship"><i class="fa-solid fa-crown"></i> FLAGSHIP OMNI-ENGINE</div>
-            <div class="project-stars"><i class="fa-solid fa-shield-halved"></i> 100% RELIABILITY</div>
-          </div>
-          <h3 class="project-title">ULTRON // Sovereign AI Omni-Engine</h3>
-          <p class="project-tagline">Autonomous Multi-Agent Loop Agent Suite with 717 Master Skills, AST Hybrid RAG & Self-Healing Watchdog.</p>
-          <div class="project-highlights">
-            <div class="highlight-item"><i class="fa-solid fa-check-circle"></i> Dual-Engine Cascade: 0-load fast cloud + warm local Qwen execution.</div>
-            <div class="highlight-item"><i class="fa-solid fa-check-circle"></i> AST-Aware code chunking + BM25 & Cosine vector hybrid search.</div>
-            <div class="highlight-item"><i class="fa-solid fa-check-circle"></i> Canonical sandbox realpath defense + live stream secrets redactor.</div>
-          </div>
-          <div class="tech-tags">
-            <span>Node.js</span><span>Multi-Agent Swarm</span><span>Hybrid RAG</span><span>Playwright</span><span>Three.js</span><span>Telegram Bot</span>
-          </div>
-          <div class="project-footer">
-            <a href="https://github.com/AADITYA104/my-Ai" target="_blank" class="btn-project"><i class="fa-brands fa-github"></i> VIEW REPO</a>
-            <button class="btn-project ghost" onclick="showProjectModal('ultron')"><i class="fa-solid fa-terminal"></i> ARCHITECTURE</button>
-          </div>
-        </div>
-
-        <!-- Project 2: ETH.VOTE -->
-        <div class="project-card glass-panel 3d-tilt" data-category="web3">
-          <div class="card-glow"></div>
-          <div class="card-header">
-            <div class="project-badge web3"><i class="fa-brands fa-ethereum"></i> DECENTRALIZED PROTOCOL</div>
-          </div>
-          <h3 class="project-title">ETH.VOTE // Cryptographic Voting DApp</h3>
-          <p class="project-tagline">Decentralized governance platform utilizing EIP-712 typed structured signatures for transparent, tamper-proof voting.</p>
-          <div class="project-highlights">
-            <div class="highlight-item"><i class="fa-solid fa-check-circle"></i> Solidity smart contracts with non-custodial cryptographic signing.</div>
-            <div class="highlight-item"><i class="fa-solid fa-check-circle"></i> Full-stack Next.js and FastAPI integration for seamless on-chain verification.</div>
-            <div class="highlight-item"><i class="fa-solid fa-check-circle"></i> Proactively eliminates Sybil manipulation and replay vulnerabilities.</div>
-          </div>
-          <div class="tech-tags">
-            <span>Solidity</span><span>Web3.js</span><span>Next.js</span><span>FastAPI</span><span>React</span>
-          </div>
-          <div class="project-footer">
-            <a href="https://github.com/AADITYA104" target="_blank" class="btn-project"><i class="fa-brands fa-github"></i> SOURCE CODE</a>
-            <button class="btn-project ghost" onclick="showProjectModal('ethvote')"><i class="fa-solid fa-circle-info"></i> SPECS</button>
-          </div>
-        </div>
-
-        <!-- Project 3: AI-Driven Threat Detection System -->
-        <div class="project-card glass-panel 3d-tilt" data-category="security">
-          <div class="card-glow"></div>
-          <div class="card-header">
-            <div class="project-badge security"><i class="fa-solid fa-shield-virus"></i> CYBERSECURITY ML</div>
-          </div>
-          <h3 class="project-title">AI Threat Detection & Anomaly Engine</h3>
-          <p class="project-tagline">High-throughput network traffic intrusion detection system achieving 92% anomaly prediction accuracy.</p>
-          <div class="project-highlights">
-            <div class="highlight-item"><i class="fa-solid fa-check-circle"></i> 92% intrusion detection accuracy across high-volume traffic packets.</div>
-            <div class="highlight-item"><i class="fa-solid fa-check-circle"></i> Advanced feature engineering over network vectors using Scikit-learn.</div>
-            <div class="highlight-item"><i class="fa-solid fa-check-circle"></i> Automated threat scoring and real-time mitigation trigger pipeline.</div>
-          </div>
-          <div class="tech-tags">
-            <span>Python</span><span>Scikit-learn</span><span>Machine Learning</span><span>Network Forensics</span>
-          </div>
-          <div class="project-footer">
-            <a href="https://github.com/AADITYA104" target="_blank" class="btn-project"><i class="fa-brands fa-github"></i> SOURCE CODE</a>
-            <button class="btn-project ghost" onclick="showProjectModal('threat')"><i class="fa-solid fa-circle-info"></i> METRICS</button>
-          </div>
-        </div>
-
-        <!-- Project 4: Healthcare AI Conversational Agent -->
-        <div class="project-card glass-panel 3d-tilt" data-category="ai">
-          <div class="card-glow"></div>
-          <div class="card-header">
-            <div class="project-badge healthcare"><i class="fa-solid fa-heart-pulse"></i> HEALTHCARE AI</div>
-          </div>
-          <h3 class="project-title">Healthcare AI Clinical Triage Assistant</h3>
-          <p class="project-tagline">NLP-driven clinical conversation system that triages patient symptoms and accelerates doctor consultations.</p>
-          <div class="project-highlights">
-            <div class="highlight-item"><i class="fa-solid fa-check-circle"></i> Reduced initial patient response and intake time by <strong>40%</strong>.</div>
-            <div class="highlight-item"><i class="fa-solid fa-check-circle"></i> Context-aware symptom extraction with semantic intent classification.</div>
-            <div class="highlight-item"><i class="fa-solid fa-check-circle"></i> Seamless handoff protocols to human healthcare providers.</div>
-          </div>
-          <div class="tech-tags">
-            <span>Python</span><span>NLP</span><span>AI Agents</span><span>FastAPI</span>
-          </div>
-          <div class="project-footer">
-            <a href="https://github.com/AADITYA104" target="_blank" class="btn-project"><i class="fa-brands fa-github"></i> SOURCE CODE</a>
-            <button class="btn-project ghost" onclick="showProjectModal('health')"><i class="fa-solid fa-circle-info"></i> IMPACT</button>
-          </div>
-        </div>
-
-      </div>
-    </section>
-
-    <!-- ===================================================================== -->
-    <!-- CHAPTER 4: THE 717-SKILL CONSTELLATION -->
-    <!-- ===================================================================== -->
-    <section id="chapter-skills" class="story-chapter skills-chapter">
-      <div class="section-header">
-        <div class="section-tag"><i class="fa-solid fa-atom"></i> CHAPTER 04</div>
-        <h2 class="section-heading">THE 717-SKILL <span class="gradient-text neon-cyan">CONSTELLATION</span></h2>
-        <p class="section-sub">A comprehensive taxonomy of full stack languages, autonomous agent frameworks, and engineering competencies.</p>
-      </div>
-
-      <div class="skill-category-tabs">
-        <button class="skill-tab active" data-filter="all"><i class="fa-solid fa-border-all"></i> ALL DOMAINS (717)</button>
-        <button class="skill-tab" data-filter="ai-swarm"><i class="fa-solid fa-network-wired"></i> AI & SWARMS (234)</button>
-        <button class="skill-tab" data-filter="fullstack"><i class="fa-solid fa-code"></i> FULL STACK & ARCH (143)</button>
-        <button class="skill-tab" data-filter="uiux"><i class="fa-solid fa-wand-magic-sparkles"></i> UI/UX PRO MAX (106)</button>
-        <button class="skill-tab" data-filter="security"><i class="fa-solid fa-shield-halved"></i> SECURITY & RAG (44)</button>
-      </div>
-
-      <div class="skills-grid" id="skills-display-grid">
-        <!-- Skill 1 -->
-        <div class="skill-node glass-panel" data-cat="ai-swarm">
-          <div class="skill-icon"><i class="fa-solid fa-robot"></i></div>
-          <div class="skill-info">
-            <span class="skill-name">Autonomous Agent Swarms</span>
-            <span class="skill-level">Reflexion, Handoffs, Actor-Critic</span>
-          </div>
-          <div class="skill-bar"><div class="bar-fill" style="width: 96%;"></div></div>
-        </div>
-
-        <!-- Skill 2 -->
-        <div class="skill-node glass-panel" data-cat="ai-swarm">
-          <div class="skill-icon"><i class="fa-solid fa-database"></i></div>
-          <div class="skill-info">
-            <span class="skill-name">AST RAG & Hybrid Vector Retrieval</span>
-            <span class="skill-level">BM25, Cosine Similarity, Embeddings</span>
-          </div>
-          <div class="skill-bar"><div class="bar-fill" style="width: 94%;"></div></div>
-        </div>
-
-        <!-- Skill 3 -->
-        <div class="skill-node glass-panel" data-cat="fullstack">
-          <div class="skill-icon"><i class="fa-brands fa-python"></i></div>
-          <div class="skill-info">
-            <span class="skill-name">Python & Applied ML</span>
-            <span class="skill-level">FastAPI, Scikit-learn, PyTorch, NLP</span>
-          </div>
-          <div class="skill-bar"><div class="bar-fill" style="width: 95%;"></div></div>
-        </div>
-
-        <!-- Skill 4 -->
-        <div class="skill-node glass-panel" data-cat="fullstack">
-          <div class="skill-icon"><i class="fa-brands fa-react"></i></div>
-          <div class="skill-info">
-            <span class="skill-name">Next.js & React Full Stack</span>
-            <span class="skill-level">App Router, SSR, Server Actions, TS</span>
-          </div>
-          <div class="skill-bar"><div class="bar-fill" style="width: 92%;"></div></div>
-        </div>
-
-        <!-- Skill 5 -->
-        <div class="skill-node glass-panel" data-cat="fullstack">
-          <div class="skill-icon"><i class="fa-brands fa-node-js"></i></div>
-          <div class="skill-info">
-            <span class="skill-name">Node.js & Systems Engineering</span>
-            <span class="skill-level">Express, Concurrency, Mutex, Streams</span>
-          </div>
-          <div class="skill-bar"><div class="bar-fill" style="width: 93%;"></div></div>
-        </div>
-
-        <!-- Skill 6 -->
-        <div class="skill-node glass-panel" data-cat="fullstack">
-          <div class="skill-icon"><i class="fa-brands fa-ethereum"></i></div>
-          <div class="skill-info">
-            <span class="skill-name">Solidity & Web3 Protocols</span>
-            <span class="skill-level">Smart Contracts, EIP-712, Cryptography</span>
-          </div>
-          <div class="skill-bar"><div class="bar-fill" style="width: 88%;"></div></div>
-        </div>
-
-        <!-- Skill 7 -->
-        <div class="skill-node glass-panel" data-cat="uiux">
-          <div class="skill-icon"><i class="fa-solid fa-cubes"></i></div>
-          <div class="skill-info">
-            <span class="skill-name">Three.js & WebGL 3D</span>
-            <span class="skill-level">Shaders, Particle Systems, Parallax</span>
-          </div>
-          <div class="skill-bar"><div class="bar-fill" style="width: 90%;"></div></div>
-        </div>
-
-        <!-- Skill 8 -->
-        <div class="skill-node glass-panel" data-cat="uiux">
-          <div class="skill-icon"><i class="fa-solid fa-palette"></i></div>
-          <div class="skill-info">
-            <span class="skill-name">UI/UX Pro Max & Motion Design</span>
-            <span class="skill-level">Tailwind, Shadcn, Spring Physics, Tokens</span>
-          </div>
-          <div class="skill-bar"><div class="bar-fill" style="width: 95%;"></div></div>
-        </div>
-
-        <!-- Skill 9 -->
-        <div class="skill-node glass-panel" data-cat="security">
-          <div class="skill-icon"><i class="fa-solid fa-shield-virus"></i></div>
-          <div class="skill-info">
-            <span class="skill-name">Security, Sandboxing & Guardrails</span>
-            <span class="skill-level">Watchdogs, Deny-Matrix, Symlink Traversal</span>
-          </div>
-          <div class="skill-bar"><div class="bar-fill" style="width: 92%;"></div></div>
         </div>
       </div>
     </section>
 
-    <!-- ===================================================================== -->
-    <!-- CHAPTER 5: RECRUITER & STAKEHOLDER MATRIX -->
-    <!-- ===================================================================== -->
-    <section id="chapter-matrix" class="story-chapter matrix-chapter">
-      <div class="section-header">
-        <div class="section-tag"><i class="fa-solid fa-bullseye"></i> CHAPTER 05</div>
-        <h2 class="section-heading">STAKEHOLDER <span class="gradient-text neon-cyan">VALUE MATRIX</span></h2>
-        <p class="section-sub">Switch perspectives to see how Aditya de-risks engineering teams, accelerates product launches, and creates tangible leverage.</p>
-      </div>
-
-      <div class="lens-switcher">
-        <button class="lens-btn active" data-lens="recruiter"><i class="fa-solid fa-user-tie"></i> RECRUITER LENS</button>
-        <button class="lens-btn" data-lens="founder"><i class="fa-solid fa-lightbulb"></i> FOUNDER LENS</button>
-        <button class="lens-btn" data-lens="client"><i class="fa-solid fa-briefcase"></i> CLIENT LENS</button>
-        <button class="lens-btn" data-lens="collaborator"><i class="fa-solid fa-users-gear"></i> COLLABORATOR LENS</button>
-      </div>
-
-      <div class="lens-content-box glass-panel" id="lens-display-card">
-        <!-- Dynamic content injected via app.js -->
-        <div class="lens-header">
-          <div class="lens-title" id="lens-title">🎯 Why Aditya Is a Zero-Risk High-Signal Hire for Engineering Teams</div>
-          <span class="lens-badge">VERIFIED PROOF POINTS</span>
+    <!-- ================================================================= -->
+    <!-- ACT III: THE MASTER FORGE (FLAGSHIP PRODUCTION BUILDS) -->
+    <!-- ================================================================= -->
+    <section id="act-forge" class="story-act projects-act" data-act="03">
+      <div class="act-inner">
+        <div class="section-lead-header" data-reveal>
+          <div class="act-chapter-tag">ACT 03 // SHIP LOGS & ARTIFACTS</div>
+          <h2 class="act-title">THE MASTER <span class="glow-cyan">PROJECT VAULT</span></h2>
+          <p class="act-description">
+            Production systems built with verified reliability gates, cryptographic integrity, and measurable business leverage.
+          </p>
         </div>
-        <div class="lens-body">
-          <div class="lens-col">
-            <h4><i class="fa-solid fa-shield-check"></i> Risk Reduction</h4>
-            <p id="lens-p1">Wide range across AI, full stack, and blockchain reduces multi-hire dependencies. Backed by measurable 95% ML predictive accuracy and 30% prototype speedup.</p>
+
+        <div class="cinematic-showcase-grid">
+
+          <!-- Feature 1: ULTRON 2026 (Flagship) -->
+          <div class="showcase-card master-feature glass-morph" data-reveal>
+            <div class="card-corner-tag"><i class="fa-solid fa-shield-halved"></i> 2026 SOVEREIGN AI CORE</div>
+            <div class="showcase-content">
+              <div class="showcase-meta-bar">
+                <span class="pill-amber"><i class="fa-solid fa-crown"></i> FLAGSHIP OMNI-ENGINE</span>
+                <span class="pill-green">100% GREEN TEST SUITE</span>
+              </div>
+              <h3 class="showcase-title">ULTRON // Autonomous Multi-Agent Loop Agent Suite</h3>
+              <p class="showcase-lead">
+                Enterprise-grade autonomous engineering loop agent equipped with <strong>717 Master Skills</strong>, AST-aware BM25 + Vector Cosine hybrid RAG, zero-crash Watchdog guardrails, and real-time SSE holographic streaming.
+              </p>
+              
+              <div class="specs-mini-grid">
+                <div class="spec-cell">
+                  <span class="spec-k">DUAL CASCADE</span>
+                  <span class="spec-v">0-Load Cloud &harr; Local Qwen</span>
+                </div>
+                <div class="spec-cell">
+                  <span class="spec-k">AST HYBRID RAG</span>
+                  <span class="spec-v">BM25 + Cosine Re-rank</span>
+                </div>
+                <div class="spec-cell">
+                  <span class="spec-k">WATCHDOG GUARD</span>
+                  <span class="spec-v">Canonical Realpath + Redactor</span>
+                </div>
+                <div class="spec-cell">
+                  <span class="spec-k">MOBILE TELEMETRY</span>
+                  <span class="spec-v">Telegram Per-Chat Sandbox</span>
+                </div>
+              </div>
+
+              <div class="badge-row">
+                <span>Node.js 20+</span><span>Multi-Agent Swarm</span><span>Three.js</span><span>Playwright</span><span>Express</span><span>Telegram Bot</span>
+              </div>
+
+              <div class="card-action-footer">
+                <a href="https://github.com/AADITYA104/my-Ai" target="_blank" class="btn-action primary">
+                  <i class="fa-brands fa-github"></i> VIEW REPOSITORY
+                </a>
+                <button class="btn-action outline" onclick="openSpecModal('ultron')">
+                  <i class="fa-solid fa-cubes"></i> 3D ARCHITECTURE SPEC
+                </button>
+              </div>
+            </div>
           </div>
-          <div class="lens-col">
-            <h4><i class="fa-solid fa-chart-line"></i> Concrete ROI</h4>
-            <p id="lens-p2">Demonstrated capability to move from architecture to production without heavy handoffs, reducing feature delivery cycles significantly.</p>
+
+          <!-- Feature 2: ETH.VOTE -->
+          <div class="showcase-card glass-morph" data-reveal>
+            <div class="card-corner-tag"><i class="fa-brands fa-ethereum"></i> WEB3 PROTOCOL</div>
+            <div class="showcase-content">
+              <div class="showcase-meta-bar">
+                <span class="pill-purple">DECENTRALIZED GOVERNANCE</span>
+              </div>
+              <h3 class="showcase-title">ETH.VOTE // Cryptographic Voting DApp</h3>
+              <p class="showcase-lead">
+                Decentralized on-chain governance platform utilizing EIP-712 structured cryptographic signatures to prevent vote manipulation and Sybil attacks without custodial overhead.
+              </p>
+              <ul class="bullet-highlights">
+                <li>Non-custodial cryptographic wallet verification.</li>
+                <li>Full-stack Next.js and FastAPI integration for instant receipt auditing.</li>
+                <li>Zero gas wastage architecture with optimized smart contract execution.</li>
+              </ul>
+              <div class="badge-row">
+                <span>Solidity</span><span>EIP-712</span><span>Web3.js</span><span>FastAPI</span><span>Next.js</span>
+              </div>
+              <div class="card-action-footer">
+                <a href="https://github.com/AADITYA104" target="_blank" class="btn-action outline">
+                  <i class="fa-brands fa-github"></i> SOURCE CODE
+                </a>
+                <button class="btn-action outline" onclick="openSpecModal('ethvote')">
+                  <i class="fa-solid fa-circle-info"></i> SPECS
+                </button>
+              </div>
+            </div>
           </div>
-          <div class="lens-col">
-            <h4><i class="fa-solid fa-handshake"></i> Ideal Role Fits</h4>
-            <p id="lens-p3">Full Stack Developer, AI/ML Engineer, Autonomous Automation Engineer, R&D Systems Engineer.</p>
+
+          <!-- Feature 3: AI Threat Detection -->
+          <div class="showcase-card glass-morph" data-reveal>
+            <div class="card-corner-tag"><i class="fa-solid fa-shield-virus"></i> CYBERSECURITY ML</div>
+            <div class="showcase-content">
+              <div class="showcase-meta-bar">
+                <span class="pill-green">92% ANOMALY ACCURACY</span>
+              </div>
+              <h3 class="showcase-title">AI Threat Detection & Anomaly System</h3>
+              <p class="showcase-lead">
+                High-throughput network traffic intrusion detection pipeline analyzing high-volume packet features in real time to classify cyber threats and automate mitigation response.
+              </p>
+              <ul class="bullet-highlights">
+                <li>Real-time traffic packet ingestion and feature normalization.</li>
+                <li>Scikit-learn ensemble models for rapid anomaly discovery.</li>
+                <li>Automated alert triggers for network isolation protocols.</li>
+              </ul>
+              <div class="badge-row">
+                <span>Python</span><span>Scikit-learn</span><span>ML Ensembles</span><span>Network Forensics</span>
+              </div>
+              <div class="card-action-footer">
+                <a href="https://github.com/AADITYA104" target="_blank" class="btn-action outline">
+                  <i class="fa-brands fa-github"></i> REPO
+                </a>
+                <button class="btn-action outline" onclick="openSpecModal('threat')">
+                  <i class="fa-solid fa-chart-line"></i> METRICS
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Feature 4: Healthcare AI Agent -->
+          <div class="showcase-card glass-morph" data-reveal>
+            <div class="card-corner-tag"><i class="fa-solid fa-heart-pulse"></i> CLINICAL TRIAGE</div>
+            <div class="showcase-content">
+              <div class="showcase-meta-bar">
+                <span class="pill-cyan">-40% PATIENT LATENCY</span>
+              </div>
+              <h3 class="showcase-title">Healthcare AI Conversational Assistant</h3>
+              <p class="showcase-lead">
+                NLP-driven conversational patient intake agent that triages symptoms, categorizes urgency levels, and accelerates doctor consultations while preserving conversational empathy.
+              </p>
+              <ul class="bullet-highlights">
+                <li>Context-aware clinical symptom extraction using semantic NLP.</li>
+                <li>Reduces initial patient response and triage intake time by 40%.</li>
+                <li>Seamless handoff protocols to human healthcare specialists.</li>
+              </ul>
+              <div class="badge-row">
+                <span>Python</span><span>NLP</span><span>FastAPI</span><span>Conversational Agents</span>
+              </div>
+              <div class="card-action-footer">
+                <a href="https://github.com/AADITYA104" target="_blank" class="btn-action outline">
+                  <i class="fa-brands fa-github"></i> REPO
+                </a>
+                <button class="btn-action outline" onclick="openSpecModal('health')">
+                  <i class="fa-solid fa-stethoscope"></i> CASE STUDY
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- ACT IV: THE 717-SKILL CONSTELLATION (INTERACTIVE MATRIX) -->
+    <!-- ================================================================= -->
+    <section id="act-constellation" class="story-act skills-act" data-act="04">
+      <div class="act-inner">
+        <div class="section-lead-header" data-reveal>
+          <div class="act-chapter-tag">ACT 04 // MASTERY CONSTELLATION</div>
+          <h2 class="act-title">THE 717-SKILL <span class="glow-cyan">MATRIX</span></h2>
+          <p class="act-description">
+            Interactive breakdown of engineering capabilities across autonomous agent orchestration, full-stack web platforms, generative 3D modeling, and security guardrails.
+          </p>
+        </div>
+
+        <div class="matrix-filter-pills" data-reveal>
+          <button class="mpill active" data-filter="all"><i class="fa-solid fa-layer-group"></i> ALL DOMAINS (717)</button>
+          <button class="mpill" data-filter="ai-swarm"><i class="fa-solid fa-robot"></i> AI & SWARMS (234)</button>
+          <button class="mpill" data-filter="fullstack"><i class="fa-solid fa-code"></i> FULL STACK & ARCH (143)</button>
+          <button class="mpill" data-filter="uiux"><i class="fa-solid fa-wand-magic-sparkles"></i> UI/UX PRO MAX (106)</button>
+          <button class="mpill" data-filter="security"><i class="fa-solid fa-shield-virus"></i> SECURITY & RAG (44)</button>
+        </div>
+
+        <div class="matrix-interactive-grid" id="matrix-nodes-grid" data-reveal>
+
+          <div class="matrix-card glass-morph" data-cat="ai-swarm">
+            <div class="matrix-card-top">
+              <span class="m-icon"><i class="fa-solid fa-network-wired"></i></span>
+              <span class="m-stat">96% MASTERY</span>
+            </div>
+            <h4>Autonomous Agent Swarms</h4>
+            <p>Actor-Critic-Polisher reflexion loops, structured JSON typed handoffs, and circuit-breaker anti-drift loops.</p>
+            <div class="m-bar"><div class="m-fill" style="width: 96%;"></div></div>
+          </div>
+
+          <div class="matrix-card glass-morph" data-cat="ai-swarm">
+            <div class="matrix-card-top">
+              <span class="m-icon"><i class="fa-solid fa-database"></i></span>
+              <span class="m-stat">94% MASTERY</span>
+            </div>
+            <h4>AST RAG & Hybrid Vector Store</h4>
+            <p>AST-aware function/class code chunking, BM25 term frequency + cosine similarity re-ranking.</p>
+            <div class="m-bar"><div class="m-fill" style="width: 94%;"></div></div>
+          </div>
+
+          <div class="matrix-card glass-morph" data-cat="fullstack">
+            <div class="matrix-card-top">
+              <span class="m-icon"><i class="fa-brands fa-python"></i></span>
+              <span class="m-stat">95% MASTERY</span>
+            </div>
+            <h4>Python & Applied Machine Learning</h4>
+            <p>FastAPI, Scikit-learn, PyTorch, predictive data pipelines, and intelligent automation workflows.</p>
+            <div class="m-bar"><div class="m-fill" style="width: 95%;"></div></div>
+          </div>
+
+          <div class="matrix-card glass-morph" data-cat="fullstack">
+            <div class="matrix-card-top">
+              <span class="m-icon"><i class="fa-brands fa-react"></i></span>
+              <span class="m-stat">92% MASTERY</span>
+            </div>
+            <h4>Next.js & React Full Stack</h4>
+            <p>App Router, React Server Components, TypeScript, responsive layouts, and SSR state management.</p>
+            <div class="m-bar"><div class="m-fill" style="width: 92%;"></div></div>
+          </div>
+
+          <div class="matrix-card glass-morph" data-cat="fullstack">
+            <div class="matrix-card-top">
+              <span class="m-icon"><i class="fa-brands fa-node-js"></i></span>
+              <span class="m-stat">93% MASTERY</span>
+            </div>
+            <h4>Node.js Systems & Concurrency</h4>
+            <p>Express, child processes, Mutex locks, async streams, and Server-Sent Events (SSE) streaming.</p>
+            <div class="m-bar"><div class="m-fill" style="width: 93%;"></div></div>
+          </div>
+
+          <div class="matrix-card glass-morph" data-cat="fullstack">
+            <div class="matrix-card-top">
+              <span class="m-icon"><i class="fa-brands fa-ethereum"></i></span>
+              <span class="m-stat">88% MASTERY</span>
+            </div>
+            <h4>Solidity & Web3 Protocols</h4>
+            <p>Smart contract security, EIP-712 structured data signing, Web3.js, and cryptographic proofs.</p>
+            <div class="m-bar"><div class="m-fill" style="width: 88%;"></div></div>
+          </div>
+
+          <div class="matrix-card glass-morph" data-cat="uiux">
+            <div class="matrix-card-top">
+              <span class="m-icon"><i class="fa-solid fa-cubes"></i></span>
+              <span class="m-stat">90% MASTERY</span>
+            </div>
+            <h4>Three.js & WebGL 3D</h4>
+            <p>GLSL shaders, procedural particle systems, geometry morphing, and camera parallax controllers.</p>
+            <div class="m-bar"><div class="m-fill" style="width: 90%;"></div></div>
+          </div>
+
+          <div class="matrix-card glass-morph" data-cat="uiux">
+            <div class="matrix-card-top">
+              <span class="m-icon"><i class="fa-solid fa-palette"></i></span>
+              <span class="m-stat">95% MASTERY</span>
+            </div>
+            <h4>UI/UX Pro Max & Motion Design</h4>
+            <p>Tailwind CSS, Shadcn theming, spring physics curves, design tokens, and editorial visual typography.</p>
+            <div class="m-bar"><div class="m-fill" style="width: 95%;"></div></div>
+          </div>
+
+          <div class="matrix-card glass-morph" data-cat="security">
+            <div class="matrix-card-top">
+              <span class="m-icon"><i class="fa-solid fa-shield-virus"></i></span>
+              <span class="m-stat">92% MASTERY</span>
+            </div>
+            <h4>Self-Healing Watchdog & Security</h4>
+            <p>Canonical realpath defense, dangerous command deny-matrices, stream log secrets redactor.</p>
+            <div class="m-bar"><div class="m-fill" style="width: 92%;"></div></div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- ACT V: STAKEHOLDER LENS MATRIX (RECRUITER & FOUNDER PERSPECTIVE) -->
+    <!-- ================================================================= -->
+    <section id="act-lens" class="story-act matrix-act" data-act="05">
+      <div class="act-inner">
+        <div class="section-lead-header" data-reveal>
+          <div class="act-chapter-tag">ACT 05 // MULTI-PERSPECTIVE PROOF</div>
+          <h2 class="act-title">THE STAKEHOLDER <span class="glow-cyan">VALUE MATRIX</span></h2>
+          <p class="act-description">
+            Select your persona to inspect the concrete leverage, risk reduction, and ROI Aditya brings to your organization.
+          </p>
+        </div>
+
+        <div class="lens-switcher-tabs" data-reveal>
+          <button class="ltab active" data-lens="recruiter"><i class="fa-solid fa-user-tie"></i> RECRUITER LENS</button>
+          <button class="ltab" data-lens="founder"><i class="fa-solid fa-lightbulb"></i> FOUNDER LENS</button>
+          <button class="ltab" data-lens="client"><i class="fa-solid fa-briefcase"></i> CLIENT LENS</button>
+          <button class="ltab" data-lens="collaborator"><i class="fa-solid fa-users-gear"></i> COLLABORATOR LENS</button>
+        </div>
+
+        <div class="lens-showcase-box glass-morph" id="lens-display-panel" data-reveal>
+          <div class="lens-top-bar">
+            <h3 class="lens-headline" id="lens-headline">🎯 Zero-Risk, High-Signal Engineering Hire</h3>
+            <span class="lens-status-badge"><i class="fa-solid fa-check"></i> VERIFIED TRACK RECORD</span>
+          </div>
+
+          <div class="lens-columns-grid">
+            <div class="lens-column">
+              <span class="col-icon"><i class="fa-solid fa-shield-check"></i></span>
+              <h4>RISK MITIGATION</h4>
+              <p id="lens-c1">
+                Broad mastery across AI, full stack, and blockchain eliminates single-point bottlenecks. Every skill is backed by shipped code, 95% ML predictive accuracy, and 30% measured speedups.
+              </p>
+            </div>
+            <div class="lens-column">
+              <span class="col-icon"><i class="fa-solid fa-chart-line-up"></i></span>
+              <h4>MEASURABLE LEVERAGE</h4>
+              <p id="lens-c2">
+                Proven ability to move from architecture sketches directly into production deployment without needing multi-tier handoffs. Reduces team feature delivery cycle times dramatically.
+              </p>
+            </div>
+            <div class="lens-column">
+              <span class="col-icon"><i class="fa-solid fa-bullseye-arrow"></i></span>
+              <h4>IDEAL FIT ROLES</h4>
+              <p id="lens-c3">
+                Full Stack Software Engineer, Autonomous AI Systems Engineer, Applied ML Developer, R&D Systems Engineer.
+              </p>
+            </div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- ===================================================================== -->
-    <!-- CHAPTER 6: QUANTUM TERMINAL & DIRECT REACH -->
-    <!-- ===================================================================== -->
-    <section id="chapter-terminal" class="story-chapter terminal-chapter">
-      <div class="section-header">
-        <div class="section-tag"><i class="fa-solid fa-terminal"></i> CHAPTER 06</div>
-        <h2 class="section-heading">QUANTUM TERMINAL & <span class="gradient-text neon-cyan">DIRECT DISPATCH</span></h2>
-        <p class="section-sub">Interact via live cybernetic CLI or initiate immediate communication with Aditya.</p>
-      </div>
-
-      <div class="terminal-split-layout">
-        <!-- Interactive Terminal Simulator -->
-        <div class="interactive-terminal glass-panel">
-          <div class="terminal-bar">
-            <div class="term-dots">
-              <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
-            </div>
-            <div class="term-title">aditya@quantum-core:~ (zsh)</div>
-            <button class="term-clear-btn" id="term-clear-btn" title="Clear Console"><i class="fa-solid fa-trash-can"></i></button>
-          </div>
-          <div class="term-screen" id="term-output">
-            <div class="term-row sys">⚡ [QUANTUM CORE] Neural CLI initialized. Type '<span class="hl">help</span>' for available commands.</div>
-            <div class="term-row sys">💡 ProTip: Try '<span class="hl">skills</span>', '<span class="hl">projects</span>', '<span class="hl">hire</span>', or '<span class="hl">contact</span>'.</div>
-          </div>
-          <div class="term-input-row">
-            <span class="term-prompt">aditya@portfolio:~$</span>
-            <input type="text" id="term-cli-input" placeholder="Type a command (e.g. 'skills')..." autocomplete="off" spellcheck="false">
-          </div>
+    <!-- ================================================================= -->
+    <!-- ACT VI: QUANTUM TERMINAL & DIRECT UPLINK -->
+    <!-- ================================================================= -->
+    <section id="act-uplink" class="story-act terminal-act" data-act="06">
+      <div class="act-inner">
+        <div class="section-lead-header" data-reveal>
+          <div class="act-chapter-tag">ACT 06 // DIRECT CYBERNETIC UPLINK</div>
+          <h2 class="act-title">QUANTUM TERMINAL & <span class="glow-cyan">TRANSMISSION</span></h2>
+          <p class="act-description">
+            Interact with the live neural CLI or initiate an encrypted message transmission directly to Aditya Devmurari.
+          </p>
         </div>
 
-        <!-- Quick Contact Dispatcher -->
-        <div class="contact-dispatch-panel glass-panel">
-          <div class="dispatch-header">
-            <h3><i class="fa-solid fa-paper-plane"></i> Initiate Transmission</h3>
-            <p>Direct channel to Aditya Devmurari. All communications acknowledged promptly.</p>
-          </div>
-
-          <div class="direct-contact-chips">
-            <a href="mailto:devmurariaaditya@gmail.com" class="chip-item">
-              <i class="fa-solid fa-envelope"></i> devmurariaaditya@gmail.com
-            </a>
-            <a href="tel:+917046387404" class="chip-item">
-              <i class="fa-solid fa-phone"></i> +91 70463 87404
-            </a>
-            <div class="chip-item static">
-              <i class="fa-solid fa-location-dot"></i> Gujarat, India
+        <div class="uplink-split-grid" data-reveal>
+          
+          <!-- Terminal Emulator -->
+          <div class="terminal-container glass-morph">
+            <div class="term-title-bar">
+              <div class="window-controls">
+                <span class="w-dot red"></span><span class="w-dot yellow"></span><span class="w-dot green"></span>
+              </div>
+              <div class="term-session-name">aditya@quantum-core:~ (zsh)</div>
+              <button class="term-btn-action" id="cli-clear-btn" title="Clear Console"><i class="fa-solid fa-eraser"></i></button>
+            </div>
+            <div class="term-screen-stream" id="cli-screen">
+              <div class="cli-row sys">⚡ [QUANTUM CORE] Interactive CLI v2026.4 initialized. Type '<span class="hl">help</span>' for commands.</div>
+              <div class="cli-row sys">💡 Try: '<span class="hl">skills</span>', '<span class="hl">projects</span>', '<span class="hl">experience</span>', '<span class="hl">hire</span>', or '<span class="hl">contact</span>'.</div>
+            </div>
+            <div class="term-prompt-row">
+              <span class="prompt-user">aditya@portfolio:~$</span>
+              <input type="text" id="cli-input-field" placeholder="Type a command and press Enter..." autocomplete="off" spellcheck="false">
             </div>
           </div>
 
-          <form id="contact-form" class="cyber-form">
-            <div class="form-group">
-              <label>YOUR NAME / ORGANIZATION</label>
-              <input type="text" id="sender-name" required placeholder="e.g. Sarah Jenkins (Tech Lead)">
+          <!-- Direct Dispatch Form -->
+          <div class="dispatch-container glass-morph">
+            <div class="dispatch-top">
+              <h3><i class="fa-solid fa-paper-plane"></i> Direct Transmission</h3>
+              <p>Direct priority channel to Aditya Devmurari. Responses returned swiftly.</p>
             </div>
-            <div class="form-group">
-              <label>YOUR EMAIL</label>
-              <input type="email" id="sender-email" required placeholder="sarah@company.com">
+
+            <div class="fast-chips-row">
+              <a href="mailto:devmurariaaditya@gmail.com" class="contact-chip">
+                <i class="fa-solid fa-envelope"></i> devmurariaaditya@gmail.com
+              </a>
+              <a href="tel:+917046387404" class="contact-chip">
+                <i class="fa-solid fa-phone"></i> +91 70463 87404
+              </a>
+              <div class="contact-chip static">
+                <i class="fa-solid fa-location-dot"></i> Gujarat, India
+              </div>
             </div>
-            <div class="form-group">
-              <label>TRANSMISSION MESSAGE / ROLE PROPOSAL</label>
-              <textarea id="sender-msg" rows="3" required placeholder="We would love to discuss a Full Stack / AI Engineer role..."></textarea>
-            </div>
-            <button type="submit" class="btn-quantum primary-cta w-full">
-              <i class="fa-solid fa-bolt"></i> DISPATCH MESSAGE
-            </button>
-          </form>
-          <div id="contact-status" class="contact-status-msg hidden"></div>
+
+            <form id="direct-uplink-form" class="cinema-form">
+              <div class="input-field-group">
+                <label>YOUR NAME & TITLE</label>
+                <input type="text" id="up-name" required placeholder="e.g. Elena Rostova (Engineering Lead)">
+              </div>
+              <div class="input-field-group">
+                <label>YOUR EMAIL</label>
+                <input type="email" id="up-email" required placeholder="elena@company.com">
+              </div>
+              <div class="input-field-group">
+                <label>OPPORTUNITY / TRANSMISSION MESSAGE</label>
+                <textarea id="up-msg" rows="3" required placeholder="We would love to discuss a Full Stack & AI Architect role on our core team..."></textarea>
+              </div>
+              <button type="submit" class="btn-action primary w-full">
+                <i class="fa-solid fa-bolt"></i> DISPATCH DIRECT TRANSMISSION
+              </button>
+            </form>
+            <div id="uplink-status-banner" class="status-banner hidden"></div>
+          </div>
+
         </div>
       </div>
     </section>
 
   </main>
 
-  <!-- Spec / Project Detail Modal -->
-  <div id="project-modal" class="project-modal-backdrop hidden">
-    <div class="modal-card glass-panel">
-      <div class="modal-header">
-        <h3 id="modal-title">PROJECT SPECIFICATIONS</h3>
-        <button id="modal-close" class="modal-close-btn">&times;</button>
+  <!-- Project Spec Detail Modal Drawer -->
+  <div id="spec-modal-drawer" class="spec-modal-overlay hidden">
+    <div class="spec-drawer-card glass-morph">
+      <div class="spec-drawer-header">
+        <h3 id="spec-modal-title">SPECIFICATION BLUEPRINT</h3>
+        <button id="spec-modal-close-btn" class="drawer-close">&times;</button>
       </div>
-      <div class="modal-body" id="modal-body"></div>
+      <div class="spec-drawer-content" id="spec-modal-content"></div>
     </div>
   </div>
 
-  <!-- Footer -->
-  <footer class="quantum-footer">
-    <div class="footer-left">
+  <!-- Editorial Footer -->
+  <footer class="cinema-footer">
+    <div class="footer-meta">
       <span>DESIGNED & ARCHITECTED BY <strong>ADITYA DEVMURARI</strong> &copy; 2026</span>
     </div>
-    <div class="footer-socials">
-      <a href="https://github.com/AADITYA104" target="_blank"><i class="fa-brands fa-github"></i></a>
-      <a href="https://linkedin.com/in/devmurari-aditya" target="_blank"><i class="fa-brands fa-linkedin"></i></a>
-      <a href="mailto:devmurariaaditya@gmail.com"><i class="fa-solid fa-envelope"></i></a>
+    <div class="footer-links">
+      <a href="https://github.com/AADITYA104" target="_blank"><i class="fa-brands fa-github"></i> GITHUB</a>
+      <a href="https://linkedin.com/in/devmurari-aditya" target="_blank"><i class="fa-brands fa-linkedin-in"></i> LINKEDIN</a>
+      <a href="mailto:devmurariaaditya@gmail.com"><i class="fa-solid fa-envelope"></i> EMAIL</a>
     </div>
   </footer>
 

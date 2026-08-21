@@ -1,131 +1,141 @@
 /**
  * ============================================================================
- *  ADITYA DEVMURARI — THREE.JS 3D WEBGL ENGINE (SCENE3D.JS)
- *  - Morphing Quantum Icosahedron Core & 2,500 Starfield Particle Galaxy
- *  - Interactive Parallax Mouse & Scroll Dynamics
+ *  ADITYA DEVMURARI — 3D THREE.JS CINEMATIC DIRECTOR (SCENE3D.JS)
+ *  - Morphing Geometric Polyhedra, 3,500 Reactive Nebula Particles
+ *  - Dynamic Camera Flight Splines & Act-Aware 3D Storytelling Transitions
  * ============================================================================
  */
 "use strict";
 
 let scene, camera, renderer;
-let quantumCore, innerSphere, orbitalRing1, orbitalRing2, starfield;
+let centralPolyhedron, coreGlowSphere, gyroscopicRingA, gyroscopicRingB;
+let stardustParticles, laserConnectionsGroup;
 let mouseX = 0, mouseY = 0;
-let targetX = 0, targetY = 0;
+let targetMouseX = 0, targetMouseY = 0;
 let windowHalfX = window.innerWidth / 2;
 let windowHalfY = window.innerHeight / 2;
-let scrollProgress = 0;
+let scrollNorm = 0;
 
-function init3DScene() {
-  const container = document.getElementById("webgl-container");
-  if (!container) return;
+function initCinematic3D() {
+  const canvas = document.getElementById("webgl-canvas");
+  if (!canvas) return;
 
-  // 1. Scene setup
+  // 1. Scene & Atmosphere Fog
   scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x050811, 0.0018);
+  scene.fog = new THREE.FogExp2(0x03060d, 0.0012);
 
-  // 2. Camera setup
-  camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 3000);
-  camera.position.z = 1000;
+  // 2. Camera Setup
+  camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 1, 4000);
+  camera.position.set(0, 0, 1100);
 
-  // 3. Renderer setup
-  renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+  // 3. WebGL Renderer with High Precision & Anti-aliasing
+  renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: "high-performance" });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
-  container.appendChild(renderer.domElement);
 
-  // 4. Ambient & Point Lighting
-  const ambientLight = new THREE.AmbientLight(0x0a192f, 1.5);
+  // 4. Dynamic Lighting System
+  const ambientLight = new THREE.AmbientLight(0x0e172e, 2.0);
   scene.add(ambientLight);
 
-  const cyanPointLight = new THREE.PointLight(0x00f3ff, 3, 1200);
-  cyanPointLight.position.set(300, 200, 500);
-  scene.add(cyanPointLight);
+  const keyLight = new THREE.DirectionalLight(0x00f3ff, 2.5);
+  keyLight.position.set(400, 300, 500);
+  scene.add(keyLight);
 
-  const purplePointLight = new THREE.PointLight(0x9d4edd, 2.5, 1200);
-  purplePointLight.position.set(-300, -200, 400);
-  scene.add(purplePointLight);
+  const fillLight = new THREE.DirectionalLight(0x9d4edd, 2.0);
+  fillLight.position.set(-400, -300, 400);
+  scene.add(fillLight);
 
-  // 5. Build Quantum Morphing Core (Wireframe Icosahedron)
-  const coreGeometry = new THREE.IcosahedronGeometry(180, 2);
-  const coreMaterial = new THREE.MeshStandardMaterial({
+  const centralPointGlow = new THREE.PointLight(0x00f3ff, 4, 800);
+  centralPointGlow.position.set(0, 0, 0);
+  scene.add(centralPointGlow);
+
+  // 5. Central Polyhedral Core (The Singularity)
+  const polyGeo = new THREE.IcosahedronGeometry(160, 2);
+  const polyMat = new THREE.MeshStandardMaterial({
     color: 0x00f3ff,
     wireframe: true,
     transparent: true,
-    opacity: 0.35,
-    roughness: 0.1,
-    metalness: 0.9
+    opacity: 0.45,
+    roughness: 0.15,
+    metalness: 0.95
   });
-  quantumCore = new THREE.Mesh(coreGeometry, coreMaterial);
-  scene.add(quantumCore);
+  centralPolyhedron = new THREE.Mesh(polyGeo, polyMat);
+  scene.add(centralPolyhedron);
 
-  // 6. Inner Glowing Energy Sphere
-  const innerGeometry = new THREE.SphereGeometry(90, 32, 32);
-  const innerMaterial = new THREE.MeshBasicMaterial({
+  // 6. Radiant Inner Plasma Core
+  const coreGeo = new THREE.DodecahedronGeometry(85, 1);
+  const coreMat = new THREE.MeshBasicMaterial({
     color: 0x7928ca,
     wireframe: true,
     transparent: true,
-    opacity: 0.6
+    opacity: 0.7
   });
-  innerSphere = new THREE.Mesh(innerGeometry, innerMaterial);
-  scene.add(innerSphere);
+  coreGlowSphere = new THREE.Mesh(coreGeo, coreMat);
+  scene.add(coreGlowSphere);
 
   // 7. Dual Gyroscopic Orbital Rings
-  const ringGeo1 = new THREE.TorusGeometry(260, 2, 16, 100);
-  const ringMat1 = new THREE.MeshBasicMaterial({ color: 0x00f3ff, transparent: true, opacity: 0.4 });
-  orbitalRing1 = new THREE.Mesh(ringGeo1, ringMat1);
-  scene.add(orbitalRing1);
+  const ringGeoA = new THREE.TorusGeometry(260, 1.8, 16, 120);
+  const ringMatA = new THREE.MeshBasicMaterial({ color: 0x00f3ff, transparent: true, opacity: 0.35 });
+  gyroscopicRingA = new THREE.Mesh(ringGeoA, ringMatA);
+  scene.add(gyroscopicRingA);
 
-  const ringGeo2 = new THREE.TorusGeometry(320, 1.5, 16, 100);
-  const ringMat2 = new THREE.MeshBasicMaterial({ color: 0xb5179e, transparent: true, opacity: 0.3 });
-  orbitalRing2 = new THREE.Mesh(ringGeo2, ringMat2);
-  orbitalRing2.rotation.x = Math.PI / 3;
-  scene.add(orbitalRing2);
+  const ringGeoB = new THREE.TorusGeometry(320, 1.4, 16, 120);
+  const ringMatB = new THREE.MeshBasicMaterial({ color: 0x9d4edd, transparent: true, opacity: 0.3 });
+  gyroscopicRingB = new THREE.Mesh(ringGeoB, ringMatB);
+  gyroscopicRingB.rotation.x = Math.PI / 2.5;
+  scene.add(gyroscopicRingB);
 
-  // 8. 2,500 Starfield Particle Constellation
-  const particleCount = 2500;
-  const particleGeometry = new THREE.BufferGeometry();
-  const positions = new Float32Array(particleCount * 3);
+  // 8. 3,500 Reactive Nebula & Stardust Particles
+  const particleCount = 3500;
+  const partGeo = new THREE.BufferGeometry();
+  const coords = new Float32Array(particleCount * 3);
   const colors = new Float32Array(particleCount * 3);
 
-  const cyanColor = new THREE.Color(0x00f3ff);
-  const purpleColor = new THREE.Color(0x9d4edd);
-  const whiteColor = new THREE.Color(0xffffff);
+  const cyan = new THREE.Color(0x00f3ff);
+  const violet = new THREE.Color(0x9d4edd);
+  const gold = new THREE.Color(0xf59e0b);
+  const white = new THREE.Color(0xffffff);
 
   for (let i = 0; i < particleCount * 3; i += 3) {
-    positions[i] = (Math.random() - 0.5) * 2400;
-    positions[i + 1] = (Math.random() - 0.5) * 2400;
-    positions[i + 2] = (Math.random() - 0.5) * 2400;
+    coords[i] = (Math.random() - 0.5) * 3000;
+    coords[i + 1] = (Math.random() - 0.5) * 3000;
+    coords[i + 2] = (Math.random() - 0.5) * 3000;
 
-    const mixed = Math.random();
-    let c = whiteColor;
-    if (mixed < 0.45) c = cyanColor;
-    else if (mixed < 0.85) c = purpleColor;
+    const r = Math.random();
+    let col = white;
+    if (r < 0.45) col = cyan;
+    else if (r < 0.8) col = violet;
+    else if (r < 0.95) col = gold;
 
-    colors[i] = c.r;
-    colors[i + 1] = c.g;
-    colors[i + 2] = c.b;
+    colors[i] = col.r;
+    colors[i + 1] = col.g;
+    colors[i + 2] = col.b;
   }
 
-  particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  partGeo.setAttribute('position', new THREE.BufferAttribute(coords, 3));
+  partGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-  const particleMaterial = new THREE.PointsMaterial({
-    size: 3,
+  const partMat = new THREE.PointsMaterial({
+    size: 2.8,
     vertexColors: true,
     transparent: true,
     opacity: 0.85,
     blending: THREE.AdditiveBlending
   });
 
-  starfield = new THREE.Points(particleGeometry, particleMaterial);
-  scene.add(starfield);
+  stardustParticles = new THREE.Points(partGeo, partMat);
+  scene.add(stardustParticles);
+
+  // 9. Laser Connections Group for Skills Constellation
+  laserConnectionsGroup = new THREE.Group();
+  scene.add(laserConnectionsGroup);
 
   // Event Listeners
   window.addEventListener('resize', onWindowResize, false);
-  document.addEventListener('mousemove', onDocumentMouseMove, false);
-  window.addEventListener('scroll', onScrollDynamics, false);
+  document.addEventListener('mousemove', onMouseMove, false);
+  window.addEventListener('scroll', onScroll, { passive: true });
 
-  animate();
+  renderFrame();
 }
 
 function onWindowResize() {
@@ -136,68 +146,72 @@ function onWindowResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-function onDocumentMouseMove(event) {
-  mouseX = (event.clientX - windowHalfX) * 0.4;
-  mouseY = (event.clientY - windowHalfY) * 0.4;
+function onMouseMove(event) {
+  mouseX = (event.clientX - windowHalfX) * 0.35;
+  mouseY = (event.clientY - windowHalfY) * 0.35;
 }
 
-function onScrollDynamics() {
-  const docHeight = document.documentElement.scrollHeight - window.innerHeight;
-  scrollProgress = window.scrollY / (docHeight || 1);
+function onScroll() {
+  const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+  scrollNorm = window.scrollY / (maxScroll || 1);
 }
 
-function animate() {
-  requestAnimationFrame(animate);
+function renderFrame() {
+  requestAnimationFrame(renderFrame);
 
-  targetX += (mouseX - targetX) * 0.05;
-  targetY += (mouseY - targetY) * 0.05;
+  targetMouseX += (mouseX - targetMouseX) * 0.05;
+  targetMouseY += (mouseY - targetMouseY) * 0.05;
 
-  // Quantum Core Continuous Morphing & Rotation
   const time = Date.now() * 0.001;
 
-  if (quantumCore) {
-    quantumCore.rotation.x = time * 0.2 + targetY * 0.001;
-    quantumCore.rotation.y = time * 0.3 + targetX * 0.001;
+  // 1. Camera Spline Movement across Story Acts
+  // Camera dives and orbits through the 3D space based on scroll
+  const cameraZ = 1100 - scrollNorm * 500;
+  const cameraX = Math.sin(scrollNorm * Math.PI * 3) * 220 + targetMouseX * 0.6;
+  const cameraY = -scrollNorm * 300 - targetMouseY * 0.6;
 
-    // Shift core position according to scroll story chapters
-    const targetZ = 1000 - scrollProgress * 400;
-    const targetPosX = Math.sin(scrollProgress * Math.PI * 2) * 200;
-    const targetPosY = -scrollProgress * 250;
+  camera.position.x += (cameraX - camera.position.x) * 0.05;
+  camera.position.y += (cameraY - camera.position.y) * 0.05;
+  camera.position.z += (cameraZ - camera.position.z) * 0.05;
+  camera.lookAt(0, -scrollNorm * 150, 0);
 
-    quantumCore.position.x += (targetPosX - quantumCore.position.x) * 0.05;
-    quantumCore.position.y += (targetPosY - quantumCore.position.y) * 0.05;
+  // 2. Central Polyhedral Core Transformations
+  if (centralPolyhedron) {
+    centralPolyhedron.rotation.x = time * 0.25 + targetMouseY * 0.0008;
+    centralPolyhedron.rotation.y = time * 0.35 + targetMouseX * 0.0008;
+    centralPolyhedron.rotation.z = time * 0.1;
 
-    if (innerSphere) {
-      innerSphere.position.copy(quantumCore.position);
-      innerSphere.rotation.x = -time * 0.4;
-      innerSphere.rotation.y = -time * 0.5;
+    // Shift position across scroll acts
+    const posX = Math.cos(scrollNorm * Math.PI * 2) * 160;
+    const posY = -scrollNorm * 220;
+    centralPolyhedron.position.set(posX, posY, 0);
+
+    if (coreGlowSphere) {
+      coreGlowSphere.position.copy(centralPolyhedron.position);
+      coreGlowSphere.rotation.x = -time * 0.45;
+      coreGlowSphere.rotation.y = -time * 0.55;
     }
 
-    if (orbitalRing1) {
-      orbitalRing1.position.copy(quantumCore.position);
-      orbitalRing1.rotation.x = time * 0.4;
-      orbitalRing1.rotation.y = time * 0.2;
+    if (gyroscopicRingA) {
+      gyroscopicRingA.position.copy(centralPolyhedron.position);
+      gyroscopicRingA.rotation.x = time * 0.4;
+      gyroscopicRingA.rotation.y = time * 0.25;
     }
 
-    if (orbitalRing2) {
-      orbitalRing2.position.copy(quantumCore.position);
-      orbitalRing2.rotation.y = -time * 0.3;
-      orbitalRing2.rotation.z = time * 0.25;
+    if (gyroscopicRingB) {
+      gyroscopicRingB.position.copy(centralPolyhedron.position);
+      gyroscopicRingB.rotation.y = -time * 0.35;
+      gyroscopicRingB.rotation.z = time * 0.3;
     }
   }
 
-  // Starfield subtle cosmic drift
-  if (starfield) {
-    starfield.rotation.y = time * 0.02;
-    starfield.rotation.x = scrollProgress * 0.5;
+  // 3. Stardust Particle Drift & Warp Velocity on Scroll
+  if (stardustParticles) {
+    stardustParticles.rotation.y = time * 0.015;
+    stardustParticles.rotation.x = scrollNorm * 0.8;
   }
-
-  // Camera Parallax
-  camera.position.x += (targetX * 0.6 - camera.position.x) * 0.05;
-  camera.position.y += (-targetY * 0.6 - camera.position.y) * 0.05;
-  camera.lookAt(scene.position);
 
   renderer.render(scene, camera);
 }
 
-window.addEventListener('DOMContentLoaded', init3DScene);
+window.addEventListener('DOMContentLoaded', initCinematic3D);
