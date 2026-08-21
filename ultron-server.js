@@ -381,10 +381,17 @@ app.get("/api/ultron/status", (req, res) => {
   });
 });
 
+// 7. 3D Storytelling Portfolio Route
+app.get(["/portfolio", "/portfolio/"], (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "portfolio", "index.html"));
+});
+
 app.listen(PORT, () => {
   console.log("\n========================================================");
   console.log(`🤖 ULTRON 2026 OMNI-ENGINE ONLINE ON http://localhost:${PORT}`);
-  console.log(`   Skills Loaded: 708 Unique Skills across 16 Frameworks`);
+  console.log(`   🎨 3D Storytelling Portfolio: http://localhost:${PORT}/portfolio`);
+  console.log(`   Skills Loaded: 717 Unique Skills across 9 Categories`);
   console.log(`   Features: Multimodal Vision + Tool Calling + Live SSE HUD`);
   console.log("========================================================\n");
 });
+
