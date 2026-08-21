@@ -22,7 +22,7 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const REPORT_CHAT_ID = process.env.REPORT_CHAT_ID;
 
 let bot = null;
-if (TELEGRAM_BOT_TOKEN && REPORT_CHAT_ID) {
+if (TELEGRAM_BOT_TOKEN && REPORT_CHAT_ID && require.main === module) {
   try {
     const TelegramBot = require("node-telegram-bot-api");
     bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: false });
@@ -149,18 +149,25 @@ async function runScheduledJob(job) {
 }
 
 // ---------------------------------------------------------------------------
-// 5. REGISTER CRON JOBS
+// 5. REGISTER CRON JOBS (Only when executed as main service)
 // ---------------------------------------------------------------------------
-SCHEDULE.filter((j) => j.enabled).forEach((job) => {
-  cron.schedule(job.cronExpr, () => {
-    runScheduledJob(job);
+function initCronScheduler() {
+  SCHEDULE.filter((j) => j.enabled).forEach((job) => {
+    cron.schedule(job.cronExpr, () => {
+      runScheduledJob(job);
+    });
+    console.log(`⏱️ Registered cron job '${job.name}' [${job.cronExpr}]`);
   });
-  console.log(`⏱️ Registered cron job '${job.name}' [${job.cronExpr}]`);
-});
+}
+
+if (require.main === module) {
+  initCronScheduler();
+}
 
 module.exports = {
   SCHEDULE,
   runScheduledJob,
   acquireLock,
-  releaseLock
+  releaseLock,
+  initCronScheduler
 };

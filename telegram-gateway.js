@@ -23,12 +23,10 @@ const ALLOWED_CHAT_IDS = (process.env.ALLOWED_CHAT_IDS || "")
   .map((s) => s.trim())
   .filter(Boolean);
 
-if (!TOKEN) {
-  console.log("ℹ️ [TELEGRAM GATEWAY] TELEGRAM_BOT_TOKEN not set. Gateway standing by.");
-}
-
 let bot = null;
-if (TOKEN) {
+
+// Only start active polling if run directly as service
+if (TOKEN && (require.main === module || process.env.START_TELEGRAM_BOT === "true")) {
   bot = new TelegramBot(TOKEN, { polling: true });
 }
 
