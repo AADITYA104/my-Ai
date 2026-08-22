@@ -20,7 +20,10 @@
         "scheduler": "node cron-scheduler.js",
         "agent:v6": "node autonomous-loop-agent-v6-gstack.js",
         "agent:v7": "node autonomous-loop-agent-v7-free.js",
-        "ultron": "node ultron-server.js"
+        "ultron": "node ultron.js",
+        "ultron:server": "node ultron-server.js",
+        "ultron:text": "node core/fallback/text-chat.js",
+        "ultron:service": "node service/autostart-config.js"
     },
     "keywords": [
         "ai",

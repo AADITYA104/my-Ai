@@ -26,16 +26,40 @@ function check(title, fn) {
 
 console.log("=== STARTING FULL SYSTEM AUDIT ===\n");
 
-// 1. Check all JS files for syntax errors
+// 1. Check all JS files for syntax errors (Root + core/ + tools/ + service/)
 const rootDir = path.resolve(__dirname, "..");
-const jsFiles = fs.readdirSync(rootDir).filter(f => f.endsWith(".js"));
-for (const file of jsFiles) {
-  check(`Syntax Check: ${file}`, () => {
+function getJsFiles(dir) {
+  let results = [];
+  if (!fs.existsSync(dir)) return results;
+  const list = fs.readdirSync(dir);
+  for (const file of list) {
+    if (file === "node_modules" || file === ".git" || file === ".agents") continue;
+    const fullPath = path.join(dir, file);
+    const stat = fs.statSync(fullPath);
+    if (stat.isDirectory()) {
+      results = results.concat(getJsFiles(fullPath));
+    } else if (file.endsWith(".js")) {
+      results.push(fullPath);
+    }
+  }
+  return results;
+}
+
+const allJsFiles = [
+  ...fs.readdirSync(rootDir).filter(f => f.endsWith(".js")).map(f => path.join(rootDir, f)),
+  ...getJsFiles(path.join(rootDir, "core")),
+  ...getJsFiles(path.join(rootDir, "tools")),
+  ...getJsFiles(path.join(rootDir, "service"))
+];
+
+for (const file of allJsFiles) {
+  const relName = path.relative(rootDir, file);
+  check(`Syntax Check: ${relName}`, () => {
     try {
-      execSync(`node -c "${path.join(rootDir, file)}"`, { stdio: "pipe" });
+      execSync(`node -c "${file}"`, { stdio: "pipe" });
       return { ok: true };
     } catch (e) {
-      return { error: `Syntax error in ${file}: ${e.stderr ? e.stderr.toString() : e.message}` };
+      return { error: `Syntax error in ${relName}: ${e.stderr ? e.stderr.toString() : e.message}` };
     }
   });
 }
