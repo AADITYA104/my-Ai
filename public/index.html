@@ -1,133 +1,793 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ULTRON // Neural Core AI</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ULTRON 2026 — Sovereign AI Engine</title>
+  <style>
+    /* =====================================================================
+       ULTRON JARVIS HUD — HOLOGRAPHIC COMMAND INTERFACE
+    ===================================================================== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  <!-- Three.js (Optimized WebGL) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    :root {
+      --cyan:    #00f3ff;
+      --violet:  #9d4edd;
+      --gold:    #f59e0b;
+      --red:     #ef4444;
+      --green:   #22c55e;
+      --bg:      #020812;
+      --panel:   rgba(0,243,255,0.04);
+      --border:  rgba(0,243,255,0.18);
+      --text:    #94a3b8;
+    }
 
-  <!-- MediaPipe Hands & Camera Utils -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Share Tech Mono', 'Courier New', monospace;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* WebGL canvas fills full background */
+    #hud-canvas {
+      position: fixed; top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 0;
+    }
+
+    /* Scan-line overlay */
+    body::after {
+      content: '';
+      position: fixed; inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 243, 255, 0.015) 2px,
+        rgba(0, 243, 255, 0.015) 4px
+      );
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* ── HUD LAYOUT ──────────────────────────────────────────────── */
+    #hud {
+      position: fixed; inset: 0;
+      z-index: 10;
+      pointer-events: none;
+      display: grid;
+      grid-template-columns: 280px 1fr 280px;
+      grid-template-rows: 56px 1fr 56px;
+      gap: 0;
+      padding: 0;
+    }
+
+    /* Top Bar */
+    #top-bar {
+      grid-column: 1 / -1;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 28px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(2,8,18,0.85);
+      backdrop-filter: blur(8px);
+    }
+
+    .hud-logo {
+      font-size: 15px; font-weight: 700; letter-spacing: 6px;
+      color: var(--cyan);
+      text-shadow: 0 0 18px var(--cyan);
+    }
+
+    .hud-clock {
+      font-size: 13px; color: var(--cyan); letter-spacing: 3px;
+    }
+
+    .hud-status-pill {
+      font-size: 11px; letter-spacing: 2px; padding: 3px 12px;
+      border: 1px solid var(--green);
+      color: var(--green);
+      text-shadow: 0 0 8px var(--green);
+      animation: pulse-green 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-green {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    /* Bottom Bar */
+    #bottom-bar {
+      grid-column: 1 / -1;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 28px;
+      border-top: 1px solid var(--border);
+      background: rgba(2,8,18,0.85);
+      backdrop-filter: blur(8px);
+    }
+
+    .hud-telemetry {
+      display: flex; gap: 28px; font-size: 11px; letter-spacing: 2px;
+    }
+
+    .telemetry-item span { color: var(--cyan); }
+
+    /* Left Panel */
+    #left-panel {
+      grid-row: 2;
+      border-right: 1px solid var(--border);
+      background: rgba(2,8,18,0.7);
+      backdrop-filter: blur(6px);
+      padding: 20px 18px;
+      display: flex; flex-direction: column; gap: 16px;
+      overflow: hidden;
+    }
+
+    /* Right Panel */
+    #right-panel {
+      grid-row: 2;
+      border-left: 1px solid var(--border);
+      background: rgba(2,8,18,0.7);
+      backdrop-filter: blur(6px);
+      padding: 20px 18px;
+      display: flex; flex-direction: column; gap: 16px;
+      overflow: hidden;
+    }
+
+    /* Center area — boot sequence + chat */
+    #center-area {
+      grid-row: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      pointer-events: all;
+    }
+
+    /* ── BOOT SEQUENCE ─────────────────────────────────────────── */
+    #boot-overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 6px;
+      z-index: 20;
+      transition: opacity 0.8s ease;
+    }
+
+    #boot-overlay.hidden { opacity: 0; pointer-events: none; }
+
+    .boot-line {
+      font-size: 12px; letter-spacing: 2px; color: var(--cyan);
+      opacity: 0;
+      animation: boot-appear 0.4s ease forwards;
+    }
+
+    @keyframes boot-appear {
+      to { opacity: 0.9; }
+    }
+
+    /* ── CENTER CHAT UI ─────────────────────────────────────────── */
+    #chat-ui {
+      width: 100%; max-width: 620px;
+      display: flex; flex-direction: column; gap: 14px;
+      opacity: 0;
+      transform: translateY(30px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+      pointer-events: all;
+    }
+
+    #chat-ui.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    #chat-title {
+      text-align: center;
+      font-size: 28px;
+      font-weight: 900;
+      letter-spacing: 8px;
+      color: var(--cyan);
+      text-shadow: 0 0 30px var(--cyan), 0 0 60px rgba(0,243,255,0.3);
+      font-family: 'Orbitron', 'Share Tech Mono', monospace;
+    }
+
+    #chat-subtitle {
+      text-align: center; font-size: 11px; letter-spacing: 3px;
+      color: rgba(0,243,255,0.5);
+      margin-top: -8px;
+    }
+
+    #chat-screen {
+      height: 220px;
+      border: 1px solid var(--border);
+      background: rgba(0,243,255,0.03);
+      padding: 14px 16px;
+      font-size: 12px; line-height: 1.7;
+      overflow-y: auto;
+      color: var(--text);
+    }
+
+    #chat-screen::-webkit-scrollbar { width: 3px; }
+    #chat-screen::-webkit-scrollbar-thumb { background: var(--cyan); }
+
+    .chat-row { margin-bottom: 4px; }
+    .chat-row.user { color: var(--gold); }
+    .chat-row.ultron { color: var(--cyan); }
+    .chat-row.ultron::before { content: "ULTRON ▸ "; }
+    .chat-row.user::before { content: "BOSS ▸ "; }
+    .chat-row.sys { color: rgba(0,243,255,0.4); font-size: 11px; }
+
+    #chat-input-row {
+      display: flex; gap: 10px;
+    }
+
+    #chat-input {
+      flex: 1;
+      background: rgba(0,243,255,0.05);
+      border: 1px solid var(--border);
+      color: var(--cyan);
+      font-family: inherit; font-size: 13px;
+      padding: 10px 14px;
+      outline: none;
+      letter-spacing: 1px;
+    }
+
+    #chat-input::placeholder { color: rgba(0,243,255,0.3); }
+    #chat-input:focus { border-color: var(--cyan); box-shadow: 0 0 14px rgba(0,243,255,0.15); }
+
+    #send-btn, #portfolio-btn {
+      padding: 10px 20px;
+      border: 1px solid var(--cyan);
+      background: transparent;
+      color: var(--cyan);
+      font-family: inherit; font-size: 12px;
+      letter-spacing: 2px;
+      cursor: pointer;
+      transition: background 0.2s, box-shadow 0.2s;
+    }
+
+    #send-btn:hover { background: rgba(0,243,255,0.12); box-shadow: 0 0 18px rgba(0,243,255,0.3); }
+    #portfolio-btn { border-color: var(--violet); color: var(--violet); margin-top: 4px; width: 100%; }
+    #portfolio-btn:hover { background: rgba(157,78,221,0.1); box-shadow: 0 0 14px rgba(157,78,221,0.3); }
+
+    /* ── PANEL WIDGETS ──────────────────────────────────────────── */
+    .panel-title {
+      font-size: 10px; letter-spacing: 3px; color: var(--cyan);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 6px; margin-bottom: 4px;
+    }
+
+    .skill-bar-row {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 10px; letter-spacing: 1px;
+      margin-bottom: 5px;
+    }
+
+    .skill-label { width: 80px; color: var(--text); flex-shrink: 0; }
+
+    .skill-bar-track {
+      flex: 1; height: 3px;
+      background: rgba(0,243,255,0.1);
+      position: relative;
+    }
+
+    .skill-bar-fill {
+      position: absolute; left: 0; top: 0; height: 100%;
+      background: var(--cyan);
+      box-shadow: 0 0 6px var(--cyan);
+      width: 0;
+      transition: width 1.2s ease;
+    }
+
+    .skill-val { font-size: 10px; color: var(--cyan); width: 28px; text-align: right; flex-shrink: 0; }
+
+    .stat-row {
+      display: flex; justify-content: space-between;
+      font-size: 11px; letter-spacing: 1px;
+      padding: 4px 0;
+      border-bottom: 1px solid rgba(0,243,255,0.06);
+    }
+
+    .stat-row .label { color: var(--text); }
+    .stat-row .val { color: var(--cyan); }
+    .stat-row .val.green { color: var(--green); }
+    .stat-row .val.gold { color: var(--gold); }
+
+    /* Arc reactor indicator */
+    .arc-status {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 10px; letter-spacing: 2px; color: var(--cyan);
+      margin-top: auto;
+    }
+
+    .arc-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 12px var(--cyan);
+      animation: pulse-green 1.5s ease infinite;
+    }
+
+    /* ── CORNER BRACKETS ────────────────────────────────────────── */
+    .corner { position: fixed; width: 28px; height: 28px; z-index: 15; pointer-events: none; }
+    .corner::before, .corner::after {
+      content: ''; position: absolute;
+      background: var(--cyan);
+      box-shadow: 0 0 8px var(--cyan);
+    }
+    .corner::before { width: 100%; height: 2px; }
+    .corner::after  { width: 2px; height: 100%; }
+
+    #c-tl { top: 56px; left: 280px; }
+    #c-tl::before { top: 0; left: 0; }
+    #c-tl::after  { top: 0; left: 0; }
+
+    #c-tr { top: 56px; right: 280px; }
+    #c-tr::before { top: 0; right: 0; left: auto; }
+    #c-tr::after  { top: 0; right: 0; left: auto; }
+
+    #c-bl { bottom: 56px; left: 280px; }
+    #c-bl::before { bottom: 0; left: 0; top: auto; }
+    #c-bl::after  { bottom: 0; left: 0; top: auto; }
+
+    #c-br { bottom: 56px; right: 280px; }
+    #c-br::before { bottom: 0; right: 0; left: auto; top: auto; }
+    #c-br::after  { bottom: 0; right: 0; left: auto; top: auto; }
+
+    /* ── LOADING SPINNER ─────────────────────────────────────────── */
+    #loading-ring {
+      width: 80px; height: 80px;
+      border: 2px solid rgba(0,243,255,0.1);
+      border-top-color: var(--cyan);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 20px;
+      box-shadow: 0 0 24px rgba(0,243,255,0.3);
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Responsive: hide panels on small screens */
+    @media (max-width: 900px) {
+      #hud { grid-template-columns: 0 1fr 0; }
+      #left-panel, #right-panel { display: none; }
+      #c-tl, #c-tr, #c-bl, #c-br { display: none; }
+    }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
 </head>
-<body class="cinematic-mode">
+<body>
 
-  <!-- Fullscreen 3D Canvas -->
-  <div id="canvas-container"></div>
+<!-- 3D WebGL Background Canvas -->
+<canvas id="hud-canvas"></canvas>
 
-  <!-- Minimal Sleek Top Holographic Status -->
-  <header class="hologram-nav">
-    <div class="brand">
-      <div class="core-indicator"></div>
-      <div class="brand-text">
-        <span class="title">ULTRON</span>
-        <span class="sub" id="status-sub">NEURAL SYSTEM ONLINE // READY FOR BOSS</span>
-      </div>
-    </div>
+<!-- Corner Brackets -->
+<div id="c-tl" class="corner"></div>
+<div id="c-tr" class="corner"></div>
+<div id="c-bl" class="corner"></div>
+<div id="c-br" class="corner"></div>
 
-    <div class="quick-actions">
-      <button id="mic-btn" class="holo-pill active" title="Click or speak 'Ultron'">
-        <span class="icon">🎙️</span>
-        <span class="lbl" id="mic-lbl">LISTENING</span>
-      </button>
-      <button id="cam-btn" class="holo-pill" title="Toggle Hand Gesture Tracking">
-        <span class="icon">📷</span>
-        <span class="lbl" id="cam-lbl">GESTURES</span>
-      </button>
-      <button id="term-btn" class="holo-pill" title="Toggle Real-Time Terminal HUD">
-        <span class="icon">📟</span>
-        <span class="lbl">TERMINAL</span>
-      </button>
-      <button id="chat-btn" class="holo-pill" title="Toggle Chat Console">
-        <span class="icon">💬</span>
-        <span class="lbl">CHAT</span>
-      </button>
-    </div>
-  </header>
+<!-- Main HUD Grid -->
+<div id="hud">
 
-  <!-- Central Subtitle / Speech Bubble HUD -->
-  <div class="holographic-speech-center">
-    <div class="wave-visualizer" id="wave-bars">
-      <div class="wbar"></div><div class="wbar"></div><div class="wbar"></div><div class="wbar"></div>
-      <div class="wbar"></div><div class="wbar"></div><div class="wbar"></div><div class="wbar"></div>
-      <div class="wbar"></div><div class="wbar"></div><div class="wbar"></div><div class="wbar"></div>
-    </div>
-    <div class="speech-text" id="live-speech-subtitle">"Say 'Ultron' or click anywhere to command, Boss..."</div>
+  <!-- TOP BAR -->
+  <div id="top-bar">
+    <div class="hud-logo">⬡ ULTRON 2026</div>
+    <div class="hud-clock" id="live-clock">--:--:--</div>
+    <div class="hud-status-pill" id="system-status">● SYSTEMS BOOTING</div>
   </div>
 
-  <!-- Minimal Transparent Gesture Camera Feed (Floating Bottom Right) -->
-  <div id="gesture-pip" class="gesture-pip-box hidden">
-    <div class="pip-label">GESTURE SENSOR</div>
-    <div class="video-holder">
-      <video id="webcam-video" playsinline></video>
-      <canvas id="hand-canvas"></canvas>
+  <!-- LEFT PANEL — Skill Matrix -->
+  <div id="left-panel">
+    <div class="panel-title">◈ SKILL MATRIX — 717 ACTIVE</div>
+
+    <div class="skill-bar-row">
+      <div class="skill-label">AI AGENTS</div>
+      <div class="skill-bar-track"><div class="skill-bar-fill" data-w="96"></div></div>
+      <div class="skill-val">96%</div>
     </div>
-    <div class="pip-tip" id="pip-tip">Show hand to rotate & scale</div>
-  </div>
-
-  <!-- Real-Time Holographic Terminal HUD (Floating Bottom Left) -->
-  <div id="holo-terminal" class="holo-terminal-panel hidden">
-    <div class="term-header">
-      <div class="title-group">
-        <span class="dot-green"></span>
-        <span>ULTRON // LIVE TASK STREAM</span>
-      </div>
-      <div class="term-controls">
-        <button id="clear-term" class="term-btn-icon" title="Clear Logs">🧹</button>
-        <button id="close-term" class="term-btn-icon" title="Close">&times;</button>
-      </div>
+    <div class="skill-bar-row">
+      <div class="skill-label">FULL STACK</div>
+      <div class="skill-bar-track"><div class="skill-bar-fill" data-w="93"></div></div>
+      <div class="skill-val">93%</div>
     </div>
-    <div class="term-body" id="term-logs">
-      <div class="term-line sys">⚡ [SYSTEM] Neural SSE Stream Initialized. Ready for task output Boss...</div>
+    <div class="skill-bar-row">
+      <div class="skill-label">BLOCKCHAIN</div>
+      <div class="skill-bar-track"><div class="skill-bar-fill" data-w="88"></div></div>
+      <div class="skill-val">88%</div>
     </div>
-  </div>
+    <div class="skill-bar-row">
+      <div class="skill-label">ML / AI</div>
+      <div class="skill-bar-track"><div class="skill-bar-fill" data-w="91"></div></div>
+      <div class="skill-val">91%</div>
+    </div>
+    <div class="skill-bar-row">
+      <div class="skill-label">SECURITY</div>
+      <div class="skill-bar-track"><div class="skill-bar-fill" data-w="85"></div></div>
+      <div class="skill-val">85%</div>
+    </div>
+    <div class="skill-bar-row">
+      <div class="skill-label">3D / WebGL</div>
+      <div class="skill-bar-track"><div class="skill-bar-fill" data-w="82"></div></div>
+      <div class="skill-val">82%</div>
+    </div>
+    <div class="skill-bar-row">
+      <div class="skill-label">DEVOPS</div>
+      <div class="skill-bar-track"><div class="skill-bar-fill" data-w="87"></div></div>
+      <div class="skill-val">87%</div>
+    </div>
 
-  <!-- Floating Hologram Chat Overlay (Clean & Futuristic) -->
-  <div id="holo-chat-overlay" class="holo-chat-overlay hidden">
-    <div class="chat-glass-panel">
-      <div class="chat-glass-header">
-        <div class="title-group">
-          <span class="dot-cyan"></span>
-          <span>ULTRON // NEURAL CONSOLE</span>
-        </div>
-        <button id="close-chat" class="close-icon">&times;</button>
-      </div>
+    <div class="panel-title" style="margin-top:8px;">◈ ACTIVE PROJECTS</div>
+    <div class="stat-row"><span class="label">ULTRON ENGINE</span><span class="val green">LIVE</span></div>
+    <div class="stat-row"><span class="label">ETH.VOTE DApp</span><span class="val green">DEPLOYED</span></div>
+    <div class="stat-row"><span class="label">THREAT AI</span><span class="val gold">92% ACC</span></div>
+    <div class="stat-row"><span class="label">HEALTH AI</span><span class="val green">-40% LATENCY</span></div>
 
-      <div class="chat-logs" id="chat-logs">
-        <div class="chat-bubble ultron">
-          <span class="tag">ULTRON</span>
-          <p>Greetings Boss. Neural sphere active. What are your orders today?</p>
-        </div>
-      </div>
-
-      <!-- Image Preview Thumbnail inside Chat -->
-      <div id="image-preview-container" class="image-preview-container hidden">
-        <div class="preview-badge">
-          <img id="image-preview-thumb" src="" alt="Attached Preview" />
-          <span class="preview-name" id="preview-filename">image.png</span>
-          <button id="remove-image-btn" type="button" class="remove-btn">&times;</button>
-        </div>
-      </div>
-
-      <form id="chat-input-form" class="chat-input-bar">
-        <input type="file" id="vision-file-input" accept="image/*" class="hidden" />
-        <button type="button" id="attach-img-btn" class="attach-btn" title="Attach Image / Screenshot for Vision AI">📎</button>
-        <input type="text" id="chat-input-field" placeholder="Type an order, paste screenshot, or ask in any language, Boss..." autocomplete="off" />
-        <button type="submit" class="transmit-btn">SEND</button>
-      </form>
+    <div class="arc-status" style="margin-top: auto;">
+      <div class="arc-dot"></div>
+      <span>ARC REACTOR NOMINAL</span>
     </div>
   </div>
 
-  <!-- Scripts -->
-  <script src="ultron-core.js"></script>
-  <script src="gesture-tracker.js"></script>
-  <script src="voice-engine.js"></script>
-  <script src="app.js"></script>
+  <!-- CENTER — Boot Sequence → Chat -->
+  <div id="center-area">
+
+    <!-- Boot Sequence -->
+    <div id="boot-overlay">
+      <div id="loading-ring"></div>
+      <div id="boot-lines"></div>
+    </div>
+
+    <!-- JARVIS Chat Interface (shown after boot) -->
+    <div id="chat-ui">
+      <div id="chat-title">ULTRON</div>
+      <div id="chat-subtitle">SOVEREIGN AI OMNI-ENGINE · 717 SKILLS · VERSION 2026</div>
+
+      <div id="chat-screen">
+        <div class="chat-row sys">// NEURAL UPLINK ESTABLISHED — ALL SYSTEMS NOMINAL</div>
+        <div class="chat-row sys">// 717 MASTER SKILLS LOADED · AGENTDB ACTIVE · WATCHDOG ARMED</div>
+        <div class="chat-row ultron">Online and fully operational, Boss. How can I serve you?</div>
+      </div>
+
+      <div id="chat-input-row">
+        <input id="chat-input" type="text" placeholder="Speak your command, Boss..." autocomplete="off" />
+        <button id="send-btn">SEND</button>
+      </div>
+
+      <button id="portfolio-btn" onclick="window.location.href='/portfolio'">
+        ⬡ VIEW 3D STORYTELLING PORTFOLIO
+      </button>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL — Live Telemetry -->
+  <div id="right-panel">
+    <div class="panel-title">◈ SYSTEM TELEMETRY</div>
+    <div class="stat-row"><span class="label">NODE PROCESS</span><span class="val green" id="telem-process">ACTIVE</span></div>
+    <div class="stat-row"><span class="label">UPTIME</span><span class="val" id="telem-uptime">--</span></div>
+    <div class="stat-row"><span class="label">CPU CORES</span><span class="val" id="telem-cpu">--</span></div>
+    <div class="stat-row"><span class="label">RAM TOTAL</span><span class="val" id="telem-ram">--</span></div>
+    <div class="stat-row"><span class="label">RAM USED</span><span class="val" id="telem-ram-used">--</span></div>
+    <div class="stat-row"><span class="label">PLATFORM</span><span class="val" id="telem-platform">--</span></div>
+    <div class="stat-row"><span class="label">SKILLS LOADED</span><span class="val gold" id="telem-skills">717</span></div>
+    <div class="stat-row"><span class="label">WATCHDOG</span><span class="val green">ARMED</span></div>
+
+    <div class="panel-title" style="margin-top: 8px;">◈ ACTIVE TASK STREAM</div>
+    <div id="task-stream" style="font-size:10px; letter-spacing:1px; color: rgba(0,243,255,0.5); line-height:1.8;">
+      <div>// SSE STREAM CONNECTED</div>
+      <div>// AWAITING TASK DISPATCH</div>
+    </div>
+
+    <div class="panel-title" style="margin-top: auto;">◈ NEURAL PROVIDER</div>
+    <div class="stat-row"><span class="label">PRIMARY</span><span class="val green" id="telem-provider">GEMINI CASCADE</span></div>
+    <div class="stat-row"><span class="label">FALLBACK</span><span class="val">LOCAL QWEN</span></div>
+    <div class="stat-row"><span class="label">RAG MODE</span><span class="val" id="telem-rag">BM25 HYBRID</span></div>
+  </div>
+
+  <!-- BOTTOM BAR -->
+  <div id="bottom-bar">
+    <div class="hud-telemetry">
+      <div class="telemetry-item">PORT <span>3000</span></div>
+      <div class="telemetry-item">SKILLS <span>717</span></div>
+      <div class="telemetry-item">WATCHDOG <span>ACTIVE</span></div>
+    </div>
+    <div style="font-size:11px; letter-spacing:2px; color: rgba(0,243,255,0.35);">
+      ADITYA DEVMURARI // SOVEREIGN AI ARCHITECT
+    </div>
+    <div class="hud-telemetry">
+      <div class="telemetry-item">RAG <span id="rag-mode">HYBRID</span></div>
+      <div class="telemetry-item">SSE <span id="sse-status">LIVE</span></div>
+      <div class="telemetry-item">v<span>2026.8</span></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- THREE.JS CDN -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+<script>
+"use strict";
+// ============================================================
+// 1. 3D ARC REACTOR BACKGROUND SCENE
+// ============================================================
+(function init3D() {
+  const canvas = document.getElementById("hud-canvas");
+  const scene  = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x020812, 0.0008);
+
+  const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 1, 3000);
+  camera.position.set(0, 0, 900);
+
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+
+  // Lights
+  scene.add(new THREE.AmbientLight(0x0e172e, 2));
+  const keyL = new THREE.DirectionalLight(0x00f3ff, 3);
+  keyL.position.set(300, 200, 400);
+  scene.add(keyL);
+  const rimL = new THREE.PointLight(0x9d4edd, 4, 700);
+  rimL.position.set(-300, -200, 0);
+  scene.add(rimL);
+  const coreL = new THREE.PointLight(0x00f3ff, 5, 500);
+  scene.add(coreL);
+
+  // Central Arc Reactor Core — Icosahedron
+  const coreGeo = new THREE.IcosahedronGeometry(120, 2);
+  const coreMat = new THREE.MeshStandardMaterial({
+    color: 0x00f3ff, wireframe: true,
+    transparent: true, opacity: 0.4,
+    roughness: 0.1, metalness: 1.0
+  });
+  const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+  scene.add(coreMesh);
+
+  // Inner plasma dodecahedron
+  const innerGeo = new THREE.DodecahedronGeometry(65, 1);
+  const innerMat = new THREE.MeshBasicMaterial({
+    color: 0x7928ca, wireframe: true, transparent: true, opacity: 0.7
+  });
+  const innerMesh = new THREE.Mesh(innerGeo, innerMat);
+  scene.add(innerMesh);
+
+  // Orbital rings
+  function makeRing(r, clr) {
+    const geo = new THREE.TorusGeometry(r, 1.5, 16, 120);
+    const mat = new THREE.MeshBasicMaterial({ color: clr, transparent: true, opacity: 0.3 });
+    return new THREE.Mesh(geo, mat);
+  }
+  const ringA = makeRing(220, 0x00f3ff); scene.add(ringA);
+  const ringB = makeRing(290, 0x9d4edd); ringB.rotation.x = Math.PI / 2.8; scene.add(ringB);
+  const ringC = makeRing(340, 0xf59e0b); ringC.rotation.y = Math.PI / 3; scene.add(ringC);
+
+  // 4000 particles
+  const N = 4000;
+  const pos = new Float32Array(N * 3);
+  const col = new Float32Array(N * 3);
+  const palette = [
+    new THREE.Color(0x00f3ff),
+    new THREE.Color(0x9d4edd),
+    new THREE.Color(0xf59e0b),
+    new THREE.Color(0xffffff)
+  ];
+  for (let i = 0; i < N * 3; i += 3) {
+    pos[i]   = (Math.random() - 0.5) * 3200;
+    pos[i+1] = (Math.random() - 0.5) * 3200;
+    pos[i+2] = (Math.random() - 0.5) * 3200;
+    const c = palette[Math.floor(Math.random() * palette.length)];
+    col[i] = c.r; col[i+1] = c.g; col[i+2] = c.b;
+  }
+  const pGeo = new THREE.BufferGeometry();
+  pGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  pGeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const pMat = new THREE.PointsMaterial({
+    size: 2.5, vertexColors: true,
+    transparent: true, opacity: 0.8,
+    blending: THREE.AdditiveBlending
+  });
+  const particles = new THREE.Points(pGeo, pMat);
+  scene.add(particles);
+
+  let mx = 0, my = 0, tmx = 0, tmy = 0;
+  window.addEventListener('mousemove', e => { mx = (e.clientX / innerWidth - 0.5) * 300; my = (e.clientY / innerHeight - 0.5) * 300; });
+  window.addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const t = Date.now() * 0.001;
+    tmx += (mx - tmx) * 0.06;
+    tmy += (my - tmy) * 0.06;
+
+    camera.position.x = tmx * 0.5;
+    camera.position.y = -tmy * 0.5;
+    camera.lookAt(0, 0, 0);
+
+    coreMesh.rotation.x = t * 0.2; coreMesh.rotation.y = t * 0.3;
+    innerMesh.rotation.x = -t * 0.4; innerMesh.rotation.y = -t * 0.5;
+    ringA.rotation.x = t * 0.35; ringA.rotation.y = t * 0.2;
+    ringB.rotation.y = -t * 0.3; ringB.rotation.z = t * 0.25;
+    ringC.rotation.x = t * 0.15; ringC.rotation.z = -t * 0.2;
+    particles.rotation.y = t * 0.012;
+
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+
+// ============================================================
+// 2. LIVE CLOCK
+// ============================================================
+function updateClock() {
+  const el = document.getElementById("live-clock");
+  if (el) el.textContent = new Date().toLocaleTimeString("en-IN", { hour12: false });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ============================================================
+// 3. BOOT SEQUENCE ANIMATION
+// ============================================================
+const BOOT_LINES = [
+  "INITIALIZING ULTRON CORE SYSTEMS...",
+  "LOADING 717 MASTER SKILLS..................... OK",
+  "AGENTDB HYBRID RAG MEMORY................... OK",
+  "SELF-HEALING WATCHDOG........................ ARMED",
+  "GEMINI CASCADE LLM PROVIDER................. CONNECTED",
+  "LOCAL QWEN FALLBACK ENGINE.................. STANDBY",
+  "SSE NEURAL TASK STREAM...................... LIVE",
+  "PLAYWRIGHT BROWSER AGENT.................... READY",
+  "SYSTEM DESIGN VAULT (20 blueprints)......... LOADED",
+  "BUILD-YOUR-OWN-X VAULT (15 guides).......... LOADED",
+  "ALL SYSTEMS NOMINAL.",
+  "WELCOME BACK, BOSS."
+];
+
+(function runBootSequence() {
+  const container = document.getElementById("boot-lines");
+  const bootOverlay = document.getElementById("boot-overlay");
+  const chatUI = document.getElementById("chat-ui");
+  const statusPill = document.getElementById("system-status");
+
+  let i = 0;
+  function addLine() {
+    if (i >= BOOT_LINES.length) {
+      setTimeout(() => {
+        bootOverlay.classList.add("hidden");
+        chatUI.classList.add("visible");
+        if (statusPill) { statusPill.textContent = "● ONLINE"; statusPill.style.borderColor = "var(--green)"; statusPill.style.color = "var(--green)"; }
+        fetchTelemetry();
+        connectSSE();
+        animateSkillBars();
+      }, 600);
+      return;
+    }
+    const div = document.createElement("div");
+    div.className = "boot-line";
+    div.style.animationDelay = "0ms";
+    div.textContent = BOOT_LINES[i++];
+    container.appendChild(div);
+    setTimeout(addLine, i < BOOT_LINES.length - 2 ? 160 : 400);
+  }
+  setTimeout(addLine, 600);
+})();
+
+// ============================================================
+// 4. LIVE TELEMETRY FROM /api/ultron/health
+// ============================================================
+async function fetchTelemetry() {
+  try {
+    const res = await fetch("/api/ultron/health");
+    const d = await res.json();
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    set("telem-uptime", `${Math.floor(d.uptimeSeconds / 60)}m ${d.uptimeSeconds % 60}s`);
+    set("telem-cpu", `${d.system.cpus} CORES`);
+    set("telem-ram", `${d.system.memory.totalGB} GB`);
+    set("telem-ram-used", `${d.system.memory.usedGB} GB (${d.system.memory.percentUsed}%)`);
+    set("telem-platform", d.system.platform.toUpperCase());
+    set("telem-skills", d.skills.total);
+    set("telem-provider", "GEMINI CASCADE");
+  } catch (e) {
+    document.getElementById("telem-process").textContent = "RECONNECTING";
+  }
+  setTimeout(fetchTelemetry, 15000);
+}
+
+// ============================================================
+// 5. SSE TASK STREAM LISTENER
+// ============================================================
+function connectSSE() {
+  const streamDiv = document.getElementById("task-stream");
+  try {
+    const es = new EventSource("/api/ultron/task-stream");
+    es.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        const line = document.createElement("div");
+        if (data.type === "log") line.textContent = `▸ ${data.text}`;
+        else if (data.type === "task_started") line.textContent = `⚡ TASK: ${data.goal}`;
+        else if (data.type === "task_completed") line.textContent = `✓ COMPLETE`;
+        else return;
+        line.style.color = data.type === "task_completed" ? "var(--green)" : "rgba(0,243,255,0.6)";
+        streamDiv.appendChild(line);
+        streamDiv.scrollTop = streamDiv.scrollHeight;
+        if (streamDiv.children.length > 12) streamDiv.removeChild(streamDiv.firstChild);
+      } catch (_) {}
+    };
+    document.getElementById("sse-status").textContent = "LIVE";
+  } catch (_) {
+    document.getElementById("sse-status").textContent = "OFF";
+  }
+}
+
+// ============================================================
+// 6. SKILL BARS ANIMATED FILL
+// ============================================================
+function animateSkillBars() {
+  document.querySelectorAll(".skill-bar-fill").forEach(bar => {
+    const w = bar.getAttribute("data-w");
+    setTimeout(() => { bar.style.width = w + "%"; }, 100);
+  });
+}
+
+// ============================================================
+// 7. CHAT INTERFACE WITH ULTRON API
+// ============================================================
+const chatInput  = document.getElementById("chat-input");
+const sendBtn    = document.getElementById("send-btn");
+const chatScreen = document.getElementById("chat-screen");
+let convHistory  = [];
+
+function appendChat(role, text) {
+  const div = document.createElement("div");
+  div.className = `chat-row ${role}`;
+  div.innerHTML = text;
+  chatScreen.appendChild(div);
+  chatScreen.scrollTop = chatScreen.scrollHeight;
+}
+
+async function sendMessage() {
+  const msg = chatInput.value.trim();
+  if (!msg) return;
+  chatInput.value = "";
+  appendChat("user", msg);
+
+  convHistory.push({ role: "user", content: msg });
+
+  const thinkDiv = document.createElement("div");
+  thinkDiv.className = "chat-row sys";
+  thinkDiv.textContent = "// PROCESSING...";
+  chatScreen.appendChild(thinkDiv);
+  chatScreen.scrollTop = chatScreen.scrollHeight;
+
+  try {
+    const res = await fetch("/api/ultron/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: msg, conversationHistory: convHistory.slice(-8) })
+    });
+    const data = await res.json();
+    chatScreen.removeChild(thinkDiv);
+    const reply = data.reply || "System error.";
+    appendChat("ultron", reply);
+    convHistory.push({ role: "assistant", content: reply });
+  } catch (e) {
+    chatScreen.removeChild(thinkDiv);
+    appendChat("ultron", "Neural channel disruption. Please retry, Boss.");
+  }
+}
+
+sendBtn.addEventListener("click", sendMessage);
+chatInput.addEventListener("keydown", e => { if (e.key === "Enter") sendMessage(); });
+</script>
+
 </body>
 </html>

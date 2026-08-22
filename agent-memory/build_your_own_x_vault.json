@@ -1,0 +1,62 @@
+[
+  {
+    "target": "web server",
+    "summary": "Open a TCP listen socket, parse the HTTP request line + headers off the wire, route by method+path, and write a well-formed HTTP response. The hard parts are keep-alive, chunked transfer-encoding, and not blocking on slow clients."
+  },
+  {
+    "target": "database",
+    "summary": "Start with an append-only log (WAL) for durability, an in-memory index (e.g. a B-tree or hash map) pointing into the log for lookups, and periodic compaction. Real databases add transactions (ACID), a query planner, and concurrency control on top."
+  },
+  {
+    "target": "redis",
+    "summary": "An in-memory key-value store is mostly a hash map with a TTL sweep and a simple text protocol (RESP) over TCP. Persistence (RDB snapshot or AOF log) and replication are the parts that make it production-grade."
+  },
+  {
+    "target": "docker",
+    "summary": "Container isolation on Linux is built from namespaces (PID, net, mount, etc. \u2014 what a process can see) and cgroups (CPU/memory limits \u2014 how much it can use), plus a layered filesystem (union mount) for images."
+  },
+  {
+    "target": "git",
+    "summary": "Git's core is a content-addressed object store: blobs (file contents), trees (directories), and commits (snapshots + parent pointers) are all hashed and stored by SHA. Branches are just movable pointers to a commit."
+  },
+  {
+    "target": "regex engine",
+    "summary": "Parse the pattern into an AST, compile it to an NFA (Thompson's construction handles this in linear time and avoids the exponential blowup of naive backtracking), then simulate the NFA against the input string."
+  },
+  {
+    "target": "shell",
+    "summary": "Read a line, tokenize it (respecting quotes), parse for pipes/redirection, then fork+exec each stage of the pipeline while wiring up pipes between them and handling redirection with dup2. Job control (Ctrl+Z, bg/fg) is the advanced part."
+  },
+  {
+    "target": "bittorrent client",
+    "summary": "Parse the .torrent file (bencoded metadata + piece hashes), talk to a tracker or DHT to find peers, then do the peer-wire handshake and request/exchange 16KB blocks, verifying each completed piece's hash before writing it to disk."
+  },
+  {
+    "target": "load balancer",
+    "summary": "Accept incoming connections and forward them to one of several backend addresses (round-robin or least-connections is enough to start), with periodic health checks pulling dead backends out of rotation automatically."
+  },
+  {
+    "target": "text editor",
+    "summary": "The core data structure choice (gap buffer, rope, or piece table) determines how cheap insert/delete are on large files. Everything else \u2014 rendering, undo/redo, syntax highlighting \u2014 sits on top of that buffer abstraction."
+  },
+  {
+    "target": "chat server",
+    "summary": "A TCP/WebSocket server keeping a map of connected clients, broadcasting or routing messages between them. Scaling past one process needs a shared pub/sub layer so messages reach clients connected to other server instances."
+  },
+  {
+    "target": "url shortener",
+    "summary": "Generate a short unique key (base62 counter, or hash+collision-check) for each long URL, store the mapping, and 301/302 redirect on lookup. The interesting parts are key-generation strategy at scale and click analytics."
+  },
+  {
+    "target": "rate limiter",
+    "summary": "Implement token-bucket (a counter that refills at a fixed rate, capped at a burst size) as a small in-memory or Redis-backed structure keyed per client \u2014 reject or queue requests that arrive with an empty bucket."
+  },
+  {
+    "target": "job queue",
+    "summary": "A persisted list of jobs plus workers that pop and process them, with visibility timeouts (so a crashed worker's job gets retried) and a dead-letter path for jobs that fail repeatedly."
+  },
+  {
+    "target": "distributed cache",
+    "summary": "Combine consistent hashing (to place keys across nodes and rebalance smoothly) with a simple get/set protocol and replication for availability when a node dies."
+  }
+]

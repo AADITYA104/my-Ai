@@ -1,0 +1,22 @@
+[
+  {
+    "id": "healthcheck-1787131492317-0",
+    "text": "impeccable design check ruflo memory gstack review local qwen ollama",
+    "embedding": null,
+    "metadata": {
+      "source": "healthcheck",
+      "chunkIndex": 0,
+      "ingestedAt": "2026-08-19T09:24:52.317Z"
+    }
+  },
+  {
+    "id": "health-check-local-1787131684371-0",
+    "text": "local qwen ollama impeccable ruflo gstack health check",
+    "embedding": null,
+    "metadata": {
+      "source": "health-check-local",
+      "chunkIndex": 0,
+      "ingestedAt": "2026-08-19T09:28:04.371Z"
+    }
+  }
+]

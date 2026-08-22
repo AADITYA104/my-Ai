@@ -81,7 +81,7 @@ const CHAT_TOOLS = [
   },
   {
     name: "search_knowledge",
-    description: "Search across 708 skills, System Design Vault, Build-Your-Own-X blueprints, and AgentDB memory.",
+    description: "Search across 717 skills, System Design Vault, Build-Your-Own-X blueprints, and AgentDB memory.",
     input_schema: {
       type: "OBJECT",
       properties: {

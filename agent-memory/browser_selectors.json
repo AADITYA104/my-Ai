@@ -1,0 +1,5 @@
+{
+  "google_search_input": "textarea[name='q'], input[name='q']",
+  "github_search_input": "input[placeholder*='Search']",
+  "submit_button": "button[type='submit'], input[type='submit']"
+}

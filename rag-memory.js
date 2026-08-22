@@ -3,8 +3,10 @@
  *  ULTRON AGENTDB & ADVANCED HYBRID RAG MEMORY ENGINE (2026 ARCHITECTURE)
  *  - AST-Aware / Semantic Code & Document Chunking.
  *  - BM25 + Vector Cosine Hybrid Search & Re-ranking.
+ *  - Ollama Embedding-Based Semantic Search (optional, graceful fallback).
  *  - File-Hash Watcher for Automatic Dynamic Re-indexing.
  *  - Memory Rotation & Archive Rotation Guard.
+ *  - CLI: `node rag-memory.js ingest <file>` / `search "<query>"`
  * ============================================================================
  */
 "use strict";
@@ -191,6 +193,81 @@ class AdvancedRAGMemory {
   }
 
   /**
+   * [NEW] Ollama Embedding-Based Semantic Search
+   * Implements the behavior .env.example already documents ("install an
+   * embedding model and set OLLAMA_EMBED_MODEL, otherwise RAG uses keyword
+   * fallback") — previously that env var was never actually read anywhere.
+   * Falls back to plain BM25 search() if no embed model is configured, or
+   * if Ollama is unreachable, so this never breaks environments without it.
+   */
+  async embedText(text) {
+    const embedModel = process.env.OLLAMA_EMBED_MODEL;
+    if (!embedModel || !text) return null;
+    try {
+      const host = process.env.OLLAMA_HOST || "http://localhost:11434";
+      const res = await fetch(`${host}/api/embeddings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: embedModel, prompt: String(text).slice(0, 4000) }),
+        signal: AbortSignal.timeout(10000)
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return Array.isArray(data.embedding) ? data.embedding : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  cosineSimilarity(a, b) {
+    if (!a || !b || a.length !== b.length) return 0;
+    let dot = 0, normA = 0, normB = 0;
+    for (let i = 0; i < a.length; i++) {
+      dot += a[i] * b[i];
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
+    }
+    if (normA === 0 || normB === 0) return 0;
+    return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+  }
+
+  /**
+   * Hybrid semantic (cosine) + BM25 search. Embeddings are computed lazily
+   * and cached onto each memory entry so repeat searches don't re-embed.
+   */
+  async searchSemantic(query, limit = 5) {
+    const embedModel = process.env.OLLAMA_EMBED_MODEL;
+    if (!embedModel) return this.search(query, limit);
+
+    const queryVec = await this.embedText(query);
+    if (!queryVec) return this.search(query, limit); // Ollama unreachable -> keyword fallback
+
+    const candidates = this.memories.slice(-500); // cap for perf on large memory stores
+    let cacheDirty = false;
+    for (const m of candidates) {
+      if (!m.embedding) {
+        const vec = await this.embedText(`${m.topic} ${m.content}`.slice(0, 2000));
+        if (vec) { m.embedding = vec; cacheDirty = true; }
+      }
+    }
+    if (cacheDirty) this.save();
+
+    const bm25Hits = this.search(query, Math.max(limit * 3, 10));
+    const bm25Map = new Map(bm25Hits.map(h => [h.id, h.score]));
+    const maxBm25 = Math.max(1, ...bm25Hits.map(h => h.score));
+
+    const scored = candidates
+      .filter(m => m.embedding)
+      .map(m => {
+        const cosine = this.cosineSimilarity(queryVec, m.embedding);
+        const bm25Norm = (bm25Map.get(m.id) || 0) / maxBm25;
+        return { ...m, score: cosine * 0.7 + bm25Norm * 0.3 };
+      });
+
+    return scored.sort((a, b) => b.score - a.score).slice(0, limit);
+  }
+
+  /**
    * [4] Stale Vector Auto-Reindexing: Checks file hashes and re-ingests changed files
    */
   reindexChangedFiles(filePaths = []) {
@@ -221,10 +298,12 @@ class AdvancedRAGMemory {
   }
 
   /**
-   * Build RAG Context string for prompts
+   * Build RAG Context string for prompts. Uses semantic hybrid search when
+   * OLLAMA_EMBED_MODEL is configured, otherwise plain BM25 keyword search.
    */
   async buildRagContext(query, limit = 3) {
-    const hits = this.search(query, limit);
+    const embedModel = process.env.OLLAMA_EMBED_MODEL;
+    const hits = embedModel ? await this.searchSemantic(query, limit) : this.search(query, limit);
     if (hits.length === 0) return "";
     return `\n<retrieved_memory>\n${hits.map(h => `[${h.topic}]:\n${h.content}`).join("\n\n")}\n</retrieved_memory>\n`;
   }
@@ -244,5 +323,81 @@ class AdvancedRAGMemory {
 
 const instance = new AdvancedRAGMemory();
 module.exports = instance;
-module.exports.buildRagContext = (q, l) => instance.buildRagContext(q, l);
-module.exports.rememberConversationTurn = (c, t) => instance.rememberConversationTurn(c, t);
+// IMPORTANT: Using .bind() instead of wrapper lambdas to avoid infinite
+// recursion — since module.exports === instance, a wrapper lambda that calls
+// instance.buildRagContext() would resolve the OWN property (itself) and loop.
+module.exports.buildRagContext = instance.buildRagContext.bind(instance);
+module.exports.rememberConversationTurn = instance.rememberConversationTurn.bind(instance);
+module.exports.searchSemantic = instance.searchSemantic.bind(instance);
+
+// ---------------------------------------------------------------------------
+// CLI: `node rag-memory.js ingest <file>` / `node rag-memory.js search <query>`
+// Supports .pdf (via pdf-parse) and plain text/code files.
+// ---------------------------------------------------------------------------
+if (require.main === module) {
+  (async () => {
+    const [, , cmd, ...rest] = process.argv;
+
+    if (cmd === "ingest") {
+      const filePath = rest.join(" ").trim();
+      if (!filePath) {
+        console.error("Usage: node rag-memory.js ingest <file.pdf|file.txt|...>");
+        process.exit(1);
+      }
+      const absPath = path.resolve(process.cwd(), filePath);
+      if (!fs.existsSync(absPath)) {
+        console.error(`File not found: ${absPath}`);
+        process.exit(1);
+      }
+
+      let text = "";
+      if (absPath.toLowerCase().endsWith(".pdf")) {
+        try {
+          const pdfParse = require("pdf-parse");
+          const buffer = fs.readFileSync(absPath);
+          const data = await pdfParse(buffer);
+          text = data.text || "";
+        } catch (err) {
+          console.error(`Failed to parse PDF: ${err.message}`);
+          process.exit(1);
+        }
+      } else {
+        text = fs.readFileSync(absPath, "utf-8");
+      }
+
+      if (!text.trim()) {
+        console.error("No extractable text found in file.");
+        process.exit(1);
+      }
+
+      const chunks = instance.chunkCodeAST(text, path.basename(absPath), 800);
+      for (const c of chunks) {
+        instance.store(`${path.basename(absPath)} (L${c.lines})`, c.content, ["ingested", path.basename(absPath)], `file:${absPath}`);
+      }
+      console.log(`✅ Ingested ${path.basename(absPath)}: ${chunks.length} chunk(s) stored in AgentDB.`);
+      return;
+    }
+
+    if (cmd === "search") {
+      const query = rest.join(" ").trim();
+      if (!query) {
+        console.error('Usage: node rag-memory.js search "your query"');
+        process.exit(1);
+      }
+      const hits = instance.search(query, 5);
+      if (hits.length === 0) {
+        console.log("No matches found.");
+        return;
+      }
+      hits.forEach((h, i) => {
+        console.log(`\n#${i + 1} [${h.topic}] (score: ${h.score.toFixed(2)})`);
+        console.log(h.content.slice(0, 400));
+      });
+      return;
+    }
+
+    console.log("Usage:");
+    console.log('  node rag-memory.js ingest <file>       - ingest a text/code/PDF file into AgentDB');
+    console.log('  node rag-memory.js search "<query>"    - search AgentDB memory');
+  })();
+}

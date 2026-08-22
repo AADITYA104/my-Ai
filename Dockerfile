@@ -2,7 +2,7 @@
 #  ULTRON 2026 MULTI-STAGE OPTIMIZED DOCKERFILE
 #  - Layer-cached dependency installation.
 #  - Non-root user security isolation.
-#  - Headless Chromium and Python3 runtime sandbox.
+#  - Headless Chromium (Playwright) and Python3 runtime sandbox.
 # ============================================================================
 
 # Stage 1: Build & Dependencies
@@ -29,11 +29,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
-    libgbm1 libasound2 \
+    libgbm1 libasound2 fonts-liberation libpango-1.0-0 libcairo2 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY . .
+
+# Install the Chromium binary Playwright needs (browser-agent.js otherwise
+# silently falls back to a plain fetch() with no JS rendering). Installed
+# into an app-owned path so the later non-root user can still launch it.
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/.pw-browsers
+RUN npx --yes playwright install chromium
 
 # Create non-root user with dedicated workspace
 RUN useradd -u 1001 -m agentuser && \

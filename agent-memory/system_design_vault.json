@@ -1,0 +1,82 @@
+[
+  {
+    "topic": "Caching",
+    "summary": "Put a fast, small store (in-memory or CDN) in front of a slower source of truth. Use TTLs or explicit invalidation; watch for stale reads and cache stampedes (many requests missing at once) \u2014 mitigate with request coalescing or jittered TTLs."
+  },
+  {
+    "topic": "Load Balancing",
+    "summary": "Distribute traffic across multiple backend instances (round-robin, least-connections, or consistent-hashing). Health checks remove dead nodes automatically. L4 balances at the connection level; L7 can route on path/headers."
+  },
+  {
+    "topic": "Rate Limiting",
+    "summary": "Protect a service from overload or abuse by capping requests per key (user, IP, API key). Token-bucket and sliding-window are the two common algorithms; token-bucket allows short bursts, sliding-window is smoother."
+  },
+  {
+    "topic": "Content Delivery Network CDN",
+    "summary": "Cache static (and sometimes dynamic) content at edge servers close to users to cut latency and offload the origin. Invalidation/purge strategy matters as much as caching itself."
+  },
+  {
+    "topic": "Message Queue",
+    "summary": "Decouple producers from consumers with an async queue (e.g. RabbitMQ, SQS, Kafka). Improves resilience (consumer can be down) and smooths load spikes. Needs a plan for retries, dead-letter queues, and idempotent consumers."
+  },
+  {
+    "topic": "Database Sharding",
+    "summary": "Split a large dataset across multiple database nodes by a shard key (e.g. user ID range or hash). Improves write throughput and storage limits but complicates cross-shard queries, joins, and transactions."
+  },
+  {
+    "topic": "Database Replication",
+    "summary": "Keep copies of data on multiple nodes for availability and read scaling. Leader-follower replication is common; followers can lag (replication lag), so read-your-writes needs care."
+  },
+  {
+    "topic": "CAP Theorem",
+    "summary": "During a network partition, a distributed system must choose between Consistency and Availability (Partition tolerance is not optional in a real network). Most systems pick a point on the CP/AP spectrum per operation, not globally."
+  },
+  {
+    "topic": "Consistent Hashing",
+    "summary": "A hashing scheme where adding/removing a node only remaps a small fraction of keys (unlike naive modulo hashing, which remaps almost everything). Used by distributed caches and databases for smooth rebalancing."
+  },
+  {
+    "topic": "Circuit Breaker",
+    "summary": "Stop calling a downstream dependency that's failing, to avoid cascading failures and let it recover. States: closed (normal) -> open (fail fast) -> half-open (test a few requests) -> closed again."
+  },
+  {
+    "topic": "CQRS",
+    "summary": "Command Query Responsibility Segregation: separate the write model (commands) from the read model (queries), often with different storage optimized for each. Useful when read and write patterns diverge a lot, adds complexity elsewhere."
+  },
+  {
+    "topic": "Event Sourcing",
+    "summary": "Store state as an append-only log of events instead of overwriting rows. Current state is derived by replaying events. Gives a full audit trail and time-travel debugging, at the cost of more complex queries and eventual consistency."
+  },
+  {
+    "topic": "API Gateway",
+    "summary": "A single entry point in front of multiple backend services that handles cross-cutting concerns: auth, rate limiting, routing, request/response transformation, and sometimes aggregation of several service calls into one response."
+  },
+  {
+    "topic": "Idempotency",
+    "summary": "Design an operation so calling it multiple times has the same effect as calling it once (critical for safe retries over unreliable networks). Typically implemented with a client-supplied idempotency key stored server-side."
+  },
+  {
+    "topic": "Backpressure",
+    "summary": "When a consumer can't keep up with a producer, propagate that signal backward instead of silently buffering forever (which just delays an eventual crash). Bounded queues + explicit drop/reject policies beat unbounded buffers."
+  },
+  {
+    "topic": "Leader Election",
+    "summary": "In a cluster, pick exactly one node to coordinate a task (e.g. via Raft, ZooKeeper, or etcd). Needed whenever an action must not happen twice concurrently, like a cron job across replicas."
+  },
+  {
+    "topic": "Distributed Locking",
+    "summary": "Coordinate mutually-exclusive access to a shared resource across processes/machines (e.g. via Redis SETNX+TTL or a consensus store). Always pair a lock with a TTL/fencing token \u2014 a crashed lock-holder should not hold the lock forever."
+  },
+  {
+    "topic": "WebSocket Scaling",
+    "summary": "Long-lived connections don't scale like stateless HTTP requests \u2014 a message meant for a user on server B has to be routed there. Common fix: a pub/sub backplane (Redis, Kafka) that fans messages out across all gateway instances."
+  },
+  {
+    "topic": "Search Indexing",
+    "summary": "Full-text search needs an inverted index (term -> list of documents), not a database LIKE query, to scale. Tools like Elasticsearch/OpenSearch handle tokenization, ranking (BM25), and faceting."
+  },
+  {
+    "topic": "Rate of Change vs Read Volume",
+    "summary": "When choosing a caching/consistency strategy, the deciding factor is usually how often data changes vs how often it's read. Rarely-changing, frequently-read data (e.g. product catalog) tolerates aggressive caching; the reverse doesn't."
+  }
+]
