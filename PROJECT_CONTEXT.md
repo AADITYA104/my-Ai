@@ -5,7 +5,7 @@ This repo should run local-first with Ollama/Qwen.
 ## Local model
 
 - Primary chat model: `ultron-core`
-- Legacy alias: `jarvis`
+- System Name & Identity: `ULTRON`
 - Ollama host: `http://localhost:11434`
 - GGUF source: `C:/Users/devmu/Downloads/Qwen3.8-27B-UD-IQ2_XXS.gguf`
 - Create/update command: `ollama create ultron-core -f Modelfile`

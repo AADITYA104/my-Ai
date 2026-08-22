@@ -32,7 +32,7 @@ const { authorizeCommand } = require("./core/security/voice-lock");
 
 console.log("\n========================================================");
 console.log("🤖 ULTRON SOVEREIGN AI SYSTEM INITIALIZED");
-console.log("   - Wake Word: 'Ultron' / 'Jarvis' (Continuous Listening)");
+console.log("   - Wake Word: 'Ultron' (Continuous Listening)");
 console.log("   - 3D Holographic UI: http://localhost:3000");
 console.log("   - Voice Synthesis: Natural Multi-tier TTS");
 console.log("   - Offline Fallback: Local Ollama Engine Ready");

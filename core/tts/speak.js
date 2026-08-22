@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  *  ULTRON NATURAL TTS & VOICE SYNTHESIZER (CORE/TTS/SPEAK.JS)
- *  - Tier 1: ElevenLabs API (Custom Jarvis AI Voice)
+ *  - Tier 1: ElevenLabs API (Custom Ultron AI Voice)
  *  - Tier 2: Coqui TTS (Local Offline Deep Neural Voice)
  *  - Tier 3: Windows SAPI PowerShell Native (Zero-cost, Zero-latency fallback)
  *  - Barge-in / Interrupt Support (instant speech kill on user barge-in)

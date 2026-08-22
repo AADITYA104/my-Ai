@@ -20,7 +20,7 @@ class PorcupineWakeEngine {
     return {
       available: this.isAvailable,
       engine: "Picovoice Porcupine (Local Windows Native)",
-      keywords: this.isAvailable ? fs.readdirSync(this.keywordDir).map(f => f.replace("_windows.ppn", "")) : ["jarvis", "ultron", "computer"],
+      keywords: this.isAvailable ? fs.readdirSync(this.keywordDir).map(f => f.replace("_windows.ppn", "")) : ["ultron"],
       latency: "< 20ms (Zero Cloud Dependency)"
     };
   }

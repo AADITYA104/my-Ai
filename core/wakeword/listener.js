@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  *  ULTRON CONTINUOUS WAKE-WORD LISTENER (CORE/WAKEWORD/LISTENER.JS)
- *  - Offline Zero-Latency Wake Word Detection ("Ultron" / "Jarvis")
+ *  - Offline Zero-Latency Wake Word Detection ("Ultron")
  *  - Porcupine / openWakeWord / Native Audio Stream with Auto-Recovery
  * ============================================================================
  */
@@ -30,12 +30,12 @@ async function startWakeWordListener(onWakeCallback) {
 
   if (accessKey && (fs.existsSync(customModelPath) || Porcupine.BUILT_IN_KEYWORDS)) {
     try {
-      const keywords = fs.existsSync(customModelPath) ? [customModelPath] : ["jarvis"];
+      const keywords = fs.existsSync(customModelPath) ? [customModelPath] : ["ultron"];
       porcupine = new Porcupine(accessKey, keywords, [0.5]);
       recorder = new PvRecorder(porcupine.frameLength, -1);
       recorder.start();
       isListening = true;
-      console.log("⚡ [WAKEWORD] Porcupine active. Say 'Ultron' / 'Jarvis' to activate.");
+      console.log("⚡ [WAKEWORD] Porcupine active. Say 'Ultron' to activate.");
 
       while (isListening) {
         if (isStopped()) break;
