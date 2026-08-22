@@ -10,22 +10,31 @@
 const { spawn } = require("child_process");
 const VoiceActivityDetector = require("./vad");
 
+const path = require("path");
+const fs = require("fs");
+
 let activeSTTProcess = null;
 const vad = new VoiceActivityDetector();
+const voiceTempDir = path.join(__dirname, "..", "..", "agent-memory", "voice_temp");
+if (!fs.existsSync(voiceTempDir)) {
+  try { fs.mkdirSync(voiceTempDir, { recursive: true }); } catch (_) {}
+}
 
 /**
  * Start streaming STT session
+ * @returns {Promise<{text: string, audioPath: string|null}>}
  */
 async function startSTT(onTranscriptChunk = null) {
   vad.reset();
   console.log("🎙️ [STT] Listening for speech (Gujarati / English)...");
+  const tempAudioFile = path.join(voiceTempDir, `voice_sample_${Date.now()}.wav`);
 
   return new Promise((resolve) => {
     let finalTranscript = "";
 
     try {
       // Attempt faster-whisper local binary if installed
-      activeSTTProcess = spawn("faster-whisper-server", ["--stream", "--lang=auto"], {
+      activeSTTProcess = spawn("faster-whisper-server", ["--stream", "--lang=auto", "--output-audio", tempAudioFile], {
         stdio: ["pipe", "pipe", "ignore"]
       });
 
@@ -40,16 +49,19 @@ async function startSTT(onTranscriptChunk = null) {
       });
 
       activeSTTProcess.on("close", () => {
-        resolve(finalTranscript.trim() || "Yes Boss, I am listening.");
+        const text = finalTranscript.trim() || "Yes Boss, I am listening.";
+        const audioPath = fs.existsSync(tempAudioFile) ? tempAudioFile : null;
+        resolve({ text, audioPath });
       });
 
       activeSTTProcess.on("error", () => {
         // Fallback simulated STT if binary is not yet running
         console.log("ℹ️ [STT BRIDGE] Native whisper server standby. Ready to receive voice/text input.");
-        resolve(finalTranscript.trim() || "Ultron online and listening, Boss.");
+        const text = finalTranscript.trim() || "Ultron online and listening, Boss.";
+        resolve({ text, audioPath: null });
       });
     } catch (_) {
-      resolve("Ultron online and listening, Boss.");
+      resolve({ text: "Ultron online and listening, Boss.", audioPath: null });
     }
   });
 }

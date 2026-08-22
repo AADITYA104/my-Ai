@@ -217,19 +217,41 @@ async function callLLMWithTools(messages, system, tools) {
   return { ...res, duration };
 }
 
-function logTaskMetrics(goal, totalTokens, durationMs, success) {
-  ensureDirs();
+function calculateTaskCost(totalTokens) {
   const inputEst = Math.round(totalTokens * 0.7);
   const outputEst = totalTokens - inputEst;
-  // Gemini 3.5 Flash rate estimate (~$0.075 / 1M tokens)
-  const costUsd = ((inputEst * 0.075 + outputEst * 0.3) / 1000000).toFixed(6);
+
+  const pricingTable = {
+    "ollama": { inputPerM: 0.0, outputPerM: 0.0, label: "Local Ollama (Free)" },
+    "local": { inputPerM: 0.0, outputPerM: 0.0, label: "Local Engine (Free)" },
+    "gemini-flash": { inputPerM: 0.075, outputPerM: 0.30, label: "Gemini 2.5/3.5 Flash" },
+    "gemini-pro": { inputPerM: 1.25, outputPerM: 5.00, label: "Gemini Pro" },
+    "claude-sonnet": { inputPerM: 3.00, outputPerM: 15.00, label: "Claude Sonnet" },
+    "gpt-4o": { inputPerM: 2.50, outputPerM: 10.00, label: "OpenAI GPT-4o" }
+  };
+
+  const isOffline = process.env.FORCE_OFFLINE === "true" || !process.env.GEMINI_API_KEY;
+  const providerKey = isOffline ? "ollama" : (process.env.DEFAULT_LLM_PROVIDER || "gemini-flash");
+  const rates = pricingTable[providerKey] || pricingTable["gemini-flash"];
+
+  const cost = ((inputEst * rates.inputPerM + outputEst * rates.outputPerM) / 1000000).toFixed(6);
+  return {
+    costUsd: `$${cost}`,
+    provider: rates.label || providerKey
+  };
+}
+
+function logTaskMetrics(goal, totalTokens, durationMs, success) {
+  ensureDirs();
+  const { costUsd, provider } = calculateTaskCost(totalTokens);
 
   const entry = {
     goal,
     timestamp: new Date().toISOString(),
     success,
     totalTokens,
-    estimatedCostUsd: `$${costUsd}`,
+    estimatedCostUsd: costUsd,
+    provider,
     durationMs
   };
   atomicAppendLine(METRICS_FILE, JSON.stringify(entry));
@@ -334,6 +356,26 @@ const TOOL_DEFINITIONS = [
     input_schema: { type: "object", properties: { expression: { type: "string" } }, required: ["expression"] } },
 ];
 
+function safeEvaluateArithmetic(expr) {
+  if (!expr || typeof expr !== "string") return "0";
+  const sanitized = expr.trim();
+  // Strip out allowed Math functions to check for unauthorized identifiers or variables
+  const withoutMath = sanitized.replace(/Math\.(sqrt|sin|cos|tan|abs|floor|ceil|round|pow|min|max|log|log10|PI|E)/g, "");
+  if (/[a-zA-Z_$]/.test(withoutMath)) {
+    return "[CALC_ERROR]: Expression contains unauthorized code, variables, or functions.";
+  }
+  try {
+    const fn = new Function("Math", `"use strict"; return (${sanitized});`);
+    const val = fn(Math);
+    if (typeof val !== "number" || !isFinite(val)) {
+      return "[CALC_ERROR]: Calculation resulted in non-finite number or NaN.";
+    }
+    return String(val);
+  } catch (err) {
+    return `[CALC_ERROR]: ${err.message}`;
+  }
+}
+
 async function executeTool(toolName, args) {
   const t0 = Date.now();
   try {
@@ -402,7 +444,7 @@ async function executeTool(toolName, args) {
         } finally { try { fs.unlinkSync(tmpFile); } catch (_) {} }
       }
       case "calculator":
-        return String(Function('"use strict"; return (' + args.expression + ')')());
+        return safeEvaluateArithmetic(args.expression);
       default:
         return `Unknown tool: ${toolName}`;
     }
@@ -434,7 +476,11 @@ async function bootstrap(goal) {
     console.log("\n[USER_CHALLENGE] Agent has concerns before starting:");
     challenges.forEach((c, i) => console.log(`  ${i+1}. ${c.note}`));
     const ok = await askHumanConfirmation("Proceed anyway?");
-    if (!ok) { console.log("[BOOTSTRAP] User declined. Exiting."); process.exit(0); }
+    if (!ok) {
+      console.log("[BOOTSTRAP] User declined. Releasing workspace lock and exiting.");
+      releaseWorkspaceLock();
+      process.exit(0);
+    }
   }
   appendMemory(`Bootstrapped plan for "${goal}" with ${plan.subtasks.length} subtasks.`);
   appendLearning("decide", `bootstrap:${Date.now()}`, `Planned goal: ${goal}`);
@@ -515,9 +561,16 @@ async function runActorWithNativeTools(subtask, memoryContext, matchedSkill, rag
         return "";
       }).filter(Boolean).join(" | ");
 
-      const compressedBlock = { role: "user", content: `[COMPRESSED EXECUTION CONTEXT (Rolling Summary)]: ${summaryText.slice(0, 500)}` };
+      const initialBaseContent = typeof preservedInitial.content === "string"
+        ? preservedInitial.content
+        : JSON.stringify(preservedInitial.content);
+
+      const mergedInitial = {
+        role: "user",
+        content: `${initialBaseContent}\n\n[COMPRESSED EXECUTION CONTEXT (Rolling Summary)]: ${summaryText.slice(0, 500)}`
+      };
       messages.length = 0;
-      messages.push(preservedInitial, compressedBlock, ...recentTurns);
+      messages.push(mergedInitial, ...recentTurns);
     }
 
     const tLlm0 = Date.now();
@@ -737,7 +790,17 @@ async function runAgent(goal, controlOptions) {
   }
 }
 
-module.exports = { runAgent, listSkills, TOOL_DEFINITIONS, redactSecrets, checkCommandSafety, acquireWorkspaceLock, releaseWorkspaceLock };
+module.exports = {
+  runAgent,
+  listSkills,
+  TOOL_DEFINITIONS,
+  redactSecrets,
+  checkCommandSafety,
+  acquireWorkspaceLock,
+  releaseWorkspaceLock,
+  safeEvaluateArithmetic,
+  calculateTaskCost
+};
 
 if (require.main === module) {
   (async () => {
