@@ -339,6 +339,30 @@
       background: rgba(239,68,68,0.08);
     }
 
+    #voice-lang-select {
+      background: rgba(0, 243, 255, 0.08);
+      border: 1px solid var(--border);
+      color: var(--cyan);
+      font-family: inherit;
+      font-size: 10px;
+      letter-spacing: 1px;
+      padding: 4px 8px;
+      outline: none;
+      cursor: pointer;
+      border-radius: 3px;
+      transition: border-color 0.2s ease;
+    }
+
+    #voice-lang-select:focus, #voice-lang-select:hover {
+      border-color: var(--cyan);
+      box-shadow: 0 0 8px rgba(0,243,255,0.3);
+    }
+
+    #voice-lang-select option {
+      background: #020812;
+      color: var(--cyan);
+    }
+
     #voice-prompt-banner {
       background: rgba(0,243,255,0.1);
       border: 1px dashed var(--cyan);
@@ -562,6 +586,12 @@
         <div id="mic-status-badge" class="listening">
           <span id="mic-status-icon">●</span> <span id="mic-status-text">LISTENING</span>
         </div>
+        <select id="voice-lang-select" onchange="changeVoiceLang(this.value)" title="Select Speech Recognition Language">
+          <option value="en-IN">🌐 EN-IN (Indian English)</option>
+          <option value="gu-IN">🌐 GU (ગુજરાતી)</option>
+          <option value="hi-IN">🌐 HI (हिन्दी)</option>
+          <option value="en-US">🌐 EN-US (English US)</option>
+        </select>
         <div id="speech-subtitle">Say "Ultron" or speak your command...</div>
         <div id="wave-bars">
           <div class="wbar"></div><div class="wbar"></div><div class="wbar"></div>
@@ -864,27 +894,33 @@ function animateSkillBars() {
 }
 
 // ============================================================
-// 7. CHAT INTERFACE WITH ULTRON API
+// 7. CHAT & ECHO-PROTECTED MULTILINGUAL VOICE ENGINE
 // ============================================================
-// 7. CHAT & CONTINUOUS VOICE ENGINE
-// ============================================================
-const chatInput      = document.getElementById("chat-input");
-const sendBtn        = document.getElementById("send-btn");
-const chatScreen     = document.getElementById("chat-screen");
-const micBtn         = document.getElementById("mic-btn");
-const micBtnLabel    = document.getElementById("mic-btn-label");
-const micBtnIcon     = document.getElementById("mic-btn-icon");
-const micStatusBadge = document.getElementById("mic-status-badge");
-const micStatusText  = document.getElementById("mic-status-text");
-const speechSubtitle = document.getElementById("speech-subtitle");
-const voiceBanner    = document.getElementById("voice-prompt-banner");
-const waveBars       = document.querySelectorAll(".wbar");
+const chatInput        = document.getElementById("chat-input");
+const sendBtn          = document.getElementById("send-btn");
+const chatScreen       = document.getElementById("chat-screen");
+const micBtn           = document.getElementById("mic-btn");
+const micBtnLabel      = document.getElementById("mic-btn-label");
+const micBtnIcon       = document.getElementById("mic-btn-icon");
+const micStatusBadge   = document.getElementById("mic-status-badge");
+const micStatusText    = document.getElementById("mic-status-text");
+const speechSubtitle   = document.getElementById("speech-subtitle");
+const voiceBanner      = document.getElementById("voice-prompt-banner");
+const voiceLangSelect  = document.getElementById("voice-lang-select");
+const waveBars         = document.querySelectorAll(".wbar");
 
-let convHistory      = [];
-let speechRecognizer = null;
-let isMicListening   = false;
-let isUltronSpeaking = false;
+let convHistory        = [];
+let speechRecognizer   = null;
+let isMicListening     = false;
+let isUltronSpeaking   = false;
+let lastUltronSpokeTime = 0;
+let lastUltronSpokenText = "";
 let waveAnimationInterval = null;
+let currentVoiceLang   = localStorage.getItem("ultron_voice_lang") || "en-IN";
+
+if (voiceLangSelect) {
+  voiceLangSelect.value = currentVoiceLang;
+}
 
 function appendChat(role, text) {
   const div = document.createElement("div");
@@ -910,43 +946,92 @@ function setWaveAnimation(active, intensity = 0.5) {
   }
 }
 
-// ── TEXT-TO-SPEECH (TTS) ──────────────────────────────────────
+// ── TEXT SIMILARITY HELPER (FOR ECHO SUPPRESSION) ──────────────
+function cleanString(str) {
+  return (str || "").toLowerCase().replace(/[^\w\s\u0A80-\u0AFF\u0900-\u097F]/gi, "").trim();
+}
+
+function isEchoOfUltron(spoken) {
+  if (!lastUltronSpokenText) return false;
+  const cSpoken = cleanString(spoken);
+  const cUltron = cleanString(lastUltronSpokenText);
+  if (!cSpoken || !cUltron) return false;
+  if (cUltron.includes(cSpoken) || cSpoken.includes(cUltron)) return true;
+  return false;
+}
+
+// ── MULTILINGUAL TEXT-TO-SPEECH (TTS) ─────────────────────────
 function speakUltronReply(text) {
   if (!window.speechSynthesis) return;
 
-  window.speechSynthesis.cancel();
+  // 1. HARD STOP RECOGNIZER BEFORE SPEAKING (PREVENTS SELF-TALK ECHO)
   isUltronSpeaking = true;
+  lastUltronSpokeTime = Date.now();
+  lastUltronSpokenText = text;
+
+  if (speechRecognizer) {
+    try { speechRecognizer.abort(); } catch (_) {}
+    try { speechRecognizer.stop(); } catch (_) {}
+  }
+
+  window.speechSynthesis.cancel();
   setWaveAnimation(true, 0.9);
 
   if (speechSubtitle) speechSubtitle.textContent = `ULTRON: "${text}"`;
 
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1.05;
+  utterance.rate = 1.0;
   utterance.pitch = 0.95;
 
+  const isGujarati = /[\u0A80-\u0AFF]/.test(text);
+  const isHindi = /[\u0900-\u097F]/.test(text);
+
   const voices = window.speechSynthesis.getVoices();
-  const preferredVoice = voices.find(v => v.name.includes("Natural") || v.name.includes("Google") || v.name.includes("Neural")) ||
-                         voices.find(v => v.lang.includes("en-US") || v.lang.includes("en-GB") || v.lang.includes("hi-IN"));
-  if (preferredVoice) utterance.voice = preferredVoice;
+  let selectedVoice = null;
+
+  if (isGujarati) {
+    selectedVoice = voices.find(v => v.lang.startsWith("gu") || v.name.toLowerCase().includes("gujarati")) ||
+                    voices.find(v => v.lang.startsWith("hi") || v.name.toLowerCase().includes("hindi")) ||
+                    voices.find(v => v.lang === "en-IN");
+  } else if (isHindi) {
+    selectedVoice = voices.find(v => v.lang.startsWith("hi") || v.name.toLowerCase().includes("hindi")) ||
+                    voices.find(v => v.lang === "en-IN");
+  } else {
+    selectedVoice = voices.find(v => v.name.includes("Natural") || v.name.includes("Google") || v.name.includes("Neural")) ||
+                    voices.find(v => v.lang === "en-IN" || v.lang === "en-US" || v.lang === "en-GB");
+  }
+
+  if (selectedVoice) utterance.voice = selectedVoice;
 
   utterance.onend = () => {
     isUltronSpeaking = false;
+    lastUltronSpokeTime = Date.now();
     setWaveAnimation(false);
     if (speechSubtitle) speechSubtitle.textContent = 'Listening for "Ultron" or next command...';
-    if (isMicListening && speechRecognizer) {
-      try { speechRecognizer.start(); } catch (_) {}
-    }
+
+    // Cooldown buffer of 750ms so microphone does not catch speaker reverb
+    setTimeout(() => {
+      if (isMicListening && !isUltronSpeaking && speechRecognizer) {
+        try { speechRecognizer.start(); } catch (_) {}
+      }
+    }, 750);
   };
 
   utterance.onerror = () => {
     isUltronSpeaking = false;
+    lastUltronSpokeTime = Date.now();
     setWaveAnimation(false);
+    setTimeout(() => {
+      if (isMicListening && !isUltronSpeaking && speechRecognizer) {
+        try { speechRecognizer.start(); } catch (_) {}
+      }
+    }, 500);
   };
 
   window.speechSynthesis.speak(utterance);
 }
 
-// ── CONTINUOUS SPEECH RECOGNITION (WAKE WORD + COMMANDS) ──────
+// ── CONTINUOUS SPEECH RECOGNITION (WAKE WORD + MULTILINGUAL) ───
 function initSpeechRecognition() {
   const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRec) {
@@ -954,32 +1039,48 @@ function initSpeechRecognition() {
     return;
   }
 
+  if (speechRecognizer) {
+    try { speechRecognizer.abort(); } catch (_) {}
+  }
+
   speechRecognizer = new SpeechRec();
   speechRecognizer.continuous = true;
   speechRecognizer.interimResults = true;
   speechRecognizer.maxAlternatives = 1;
+  speechRecognizer.lang = currentVoiceLang;
 
   speechRecognizer.onstart = () => {
-    isMicListening = true;
-    updateMicUI(true);
-    if (speechSubtitle) speechSubtitle.textContent = '🎙️ Listening... Say "Ultron" or speak command';
+    if (!isUltronSpeaking) {
+      isMicListening = true;
+      updateMicUI(true);
+      if (speechSubtitle) speechSubtitle.textContent = `🎙️ Listening (${currentVoiceLang})... Say "Ultron" or command`;
+    }
   };
 
   speechRecognizer.onend = () => {
     // Keep alive automatically unless muted or Ultron is speaking
     if (isMicListening && !isUltronSpeaking) {
-      try { speechRecognizer.start(); } catch (_) {}
+      setTimeout(() => {
+        if (isMicListening && !isUltronSpeaking) {
+          try { speechRecognizer.start(); } catch (_) {}
+        }
+      }, 300);
     }
   };
 
   speechRecognizer.onerror = (e) => {
     if (e.error === "not-allowed") {
-      if (speechSubtitle) speechSubtitle.textContent = "Microphone access blocked. Click the banner to enable!";
+      if (speechSubtitle) speechSubtitle.textContent = "Microphone blocked. Click the banner to enable!";
       updateMicUI(false);
     }
   };
 
   speechRecognizer.onresult = (event) => {
+    // 2. ECHO SUPPRESSION: Discard input if Ultron is speaking or within cooldown
+    if (isUltronSpeaking || (Date.now() - lastUltronSpokeTime < 800)) {
+      return;
+    }
+
     let interimText = "";
     let finalText = "";
 
@@ -993,22 +1094,46 @@ function initSpeechRecognition() {
 
     const liveText = (finalText || interimText).trim();
     if (liveText && speechSubtitle) {
+      // If recognized text is an echo of what Ultron said, ignore
+      if (isEchoOfUltron(liveText)) return;
+
       speechSubtitle.textContent = `BOSS: "${liveText}"`;
       setWaveAnimation(true, 0.4);
     }
 
     if (finalText.trim().length > 0) {
-      handleHeardSpeech(finalText.trim());
+      const heard = finalText.trim();
+      if (!isEchoOfUltron(heard)) {
+        handleHeardSpeech(heard);
+      }
     }
   };
 }
 
+function changeVoiceLang(lang) {
+  currentVoiceLang = lang;
+  localStorage.setItem("ultron_voice_lang", lang);
+  if (speechRecognizer) {
+    try { speechRecognizer.stop(); } catch (_) {}
+    speechRecognizer.lang = lang;
+    if (isMicListening) {
+      setTimeout(() => {
+        try { speechRecognizer.start(); } catch (_) {}
+      }, 200);
+    }
+  }
+  if (speechSubtitle) speechSubtitle.textContent = `Voice language switched to: ${lang}`;
+}
+
 function handleHeardSpeech(spoken) {
+  // Echo guard
+  if (isUltronSpeaking || isEchoOfUltron(spoken)) return;
+
   const lower = spoken.toLowerCase();
-  const wakeTriggers = ["ultron", "hey ultron", "ok ultron", "અલ્ટ્રોન", "अल्ट्रॉन", "altron", "oltron", "ultran"];
+  const wakeTriggers = ["ultron", "hey ultron", "ok ultron", "અલ્ટ્રોન", "अल्ट्रॉन", "altron", "oltron", "ultran", "hello ultron"];
   const hasWakeWord = wakeTriggers.some(w => lower.includes(w));
 
-  // Strip wake word to extract command
+  // Clean command text
   let cleanCommand = spoken;
   wakeTriggers.forEach(w => {
     cleanCommand = cleanCommand.replace(new RegExp(w, "gi"), "").trim();

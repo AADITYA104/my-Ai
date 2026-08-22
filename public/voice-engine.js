@@ -1,31 +1,51 @@
 /**
  * ============================================================================
- *  ULTRON VOICE ENGINE — Fast, Resilient Multilingual Speech System
- * ============================================================================
+ *  ULTRON VOICE ENGINE — Echo-Suppressed Multilingual Speech System
+ * ============================================================
  */
 "use strict";
 
 let speechRecognizer = null;
 let isMicActive = true;
 let isSpeaking = false;
+let lastUltronSpokeTime = 0;
+let lastUltronSpokenText = "";
+let currentLang = localStorage.getItem("ultron_voice_lang") || "en-IN";
 
 const speechSubtitle = document.getElementById("speech-subtitle") || document.getElementById("live-speech-subtitle");
 const micBtn = document.getElementById("mic-btn");
 const micLbl = document.getElementById("mic-btn-label") || document.getElementById("mic-lbl");
 const waveBars = document.querySelectorAll(".wbar");
 
+function cleanString(str) {
+  return (str || "").toLowerCase().replace(/[^\w\s\u0A80-\u0AFF\u0900-\u097F]/gi, "").trim();
+}
+
+function isEchoOfUltron(spoken) {
+  if (!lastUltronSpokenText) return false;
+  const cSpoken = cleanString(spoken);
+  const cUltron = cleanString(lastUltronSpokenText);
+  if (!cSpoken || !cUltron) return false;
+  if (cUltron.includes(cSpoken) || cSpoken.includes(cUltron)) return true;
+  return false;
+}
+
 function initVoiceEngine() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
-    console.warn("Speech Recognition not supported in this browser.");
-    if (speechSubtitle) speechSubtitle.innerText = "Microphone unavailable. Use Chat mode!";
+    if (speechSubtitle) speechSubtitle.innerText = "Microphone unavailable in this browser. Use Chat mode!";
     return;
+  }
+
+  if (speechRecognizer) {
+    try { speechRecognizer.abort(); } catch (_) {}
   }
 
   speechRecognizer = new SpeechRecognition();
   speechRecognizer.continuous = true;
   speechRecognizer.interimResults = true;
   speechRecognizer.maxAlternatives = 1;
+  speechRecognizer.lang = currentLang;
 
   speechRecognizer.onstart = () => {
     updateMicUI(true);
@@ -33,7 +53,11 @@ function initVoiceEngine() {
 
   speechRecognizer.onend = () => {
     if (isMicActive && !isSpeaking) {
-      try { speechRecognizer.start(); } catch (_) {}
+      setTimeout(() => {
+        if (isMicActive && !isSpeaking) {
+          try { speechRecognizer.start(); } catch (_) {}
+        }
+      }, 300);
     }
   };
 
@@ -42,6 +66,11 @@ function initVoiceEngine() {
   };
 
   speechRecognizer.onresult = (event) => {
+    // Suppress acoustic feedback / self-talk echo
+    if (isSpeaking || (Date.now() - lastUltronSpokeTime < 800)) {
+      return;
+    }
+
     let finalTranscript = "";
     let interimTranscript = "";
 
@@ -55,11 +84,15 @@ function initVoiceEngine() {
 
     const displayText = (finalTranscript || interimTranscript).trim();
     if (displayText && speechSubtitle) {
+      if (isEchoOfUltron(displayText)) return;
       speechSubtitle.innerText = `BOSS: "${displayText}"`;
     }
 
     if (finalTranscript.trim().length > 0) {
-      processHeardVoice(finalTranscript.trim());
+      const heard = finalTranscript.trim();
+      if (!isEchoOfUltron(heard)) {
+        processHeardVoice(heard);
+      }
     }
   };
 
@@ -68,7 +101,7 @@ function initVoiceEngine() {
 
 function startListening() {
   isMicActive = true;
-  if (speechRecognizer) {
+  if (speechRecognizer && !isSpeaking) {
     try { speechRecognizer.start(); } catch (_) {}
   }
   updateMicUI(true);
@@ -101,11 +134,16 @@ function updateMicUI(active) {
 }
 
 async function processHeardVoice(transcript) {
-  const lower = transcript.toLowerCase();
-  console.log("[HEARD VOICE]", transcript);
+  if (isSpeaking || isEchoOfUltron(transcript)) return;
 
-  const isWakeWord = lower.includes("ultron") || lower.includes("hey ultron") || lower.includes("અલ્ટ્રોન") || lower.includes("अल्ट्रॉन");
-  let command = transcript.replace(/hey ultron|ultron|અલ્ટ્રોન|अल्ट્રॉन/gi, "").trim();
+  const lower = transcript.toLowerCase();
+  const wakeTriggers = ["ultron", "hey ultron", "ok ultron", "અલ્ટ્રોન", "अल्ट्रॉन", "altron", "oltron", "ultran"];
+  const isWakeWord = wakeTriggers.some(w => lower.includes(w));
+  
+  let command = transcript;
+  wakeTriggers.forEach(w => {
+    command = command.replace(new RegExp(w, "gi"), "").trim();
+  });
 
   if (isWakeWord && !command) {
     ultronSpeak("Yes Boss, I am listening. What are your orders?");
@@ -150,20 +188,41 @@ async function sendQueryToUltron(promptText, speakBack = true) {
 function ultronSpeak(text) {
   if (!window.speechSynthesis) return;
 
-  window.speechSynthesis.cancel();
+  // HARD STOP RECOGNIZER BEFORE SPEAKING TO PREVENT SELF-ECHO
   isSpeaking = true;
+  lastUltronSpokeTime = Date.now();
+  lastUltronSpokenText = text;
+
   if (speechRecognizer) {
+    try { speechRecognizer.abort(); } catch (_) {}
     try { speechRecognizer.stop(); } catch (_) {}
   }
 
+  window.speechSynthesis.cancel();
+
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1.05;
+  utterance.rate = 1.0;
   utterance.pitch = 0.95;
 
+  const isGujarati = /[\u0A80-\u0AFF]/.test(text);
+  const isHindi = /[\u0900-\u097F]/.test(text);
+
   const voices = window.speechSynthesis.getVoices();
-  const naturalVoice = voices.find(v => v.name.includes("Natural") || v.name.includes("Google") || v.name.includes("Neural")) ||
-                       voices.find(v => v.lang.includes("en-US") || v.lang.includes("en-GB") || v.lang.includes("hi-IN"));
-  if (naturalVoice) utterance.voice = naturalVoice;
+  let selectedVoice = null;
+
+  if (isGujarati) {
+    selectedVoice = voices.find(v => v.lang.startsWith("gu") || v.name.toLowerCase().includes("gujarati")) ||
+                    voices.find(v => v.lang.startsWith("hi") || v.name.toLowerCase().includes("hindi")) ||
+                    voices.find(v => v.lang === "en-IN");
+  } else if (isHindi) {
+    selectedVoice = voices.find(v => v.lang.startsWith("hi") || v.name.toLowerCase().includes("hindi")) ||
+                    voices.find(v => v.lang === "en-IN");
+  } else {
+    selectedVoice = voices.find(v => v.name.includes("Natural") || v.name.includes("Google") || v.name.includes("Neural")) ||
+                    voices.find(v => v.lang === "en-IN" || v.lang === "en-US" || v.lang === "en-GB");
+  }
+
+  if (selectedVoice) utterance.voice = selectedVoice;
 
   utterance.onstart = () => {
     if (speechSubtitle) speechSubtitle.innerText = `ULTRON: "${text}"`;
@@ -172,14 +231,20 @@ function ultronSpeak(text) {
 
   utterance.onend = () => {
     isSpeaking = false;
+    lastUltronSpokeTime = Date.now();
     startWaveAnimation(false);
-    if (isMicActive && speechRecognizer) {
-      try { speechRecognizer.start(); } catch (_) {}
-    }
+
+    // 750ms silence buffer to avoid capturing room reverb
+    setTimeout(() => {
+      if (isMicActive && !isSpeaking && speechRecognizer) {
+        try { speechRecognizer.start(); } catch (_) {}
+      }
+    }, 750);
   };
 
   utterance.onerror = () => {
     isSpeaking = false;
+    lastUltronSpokeTime = Date.now();
     startWaveAnimation(false);
   };
 
