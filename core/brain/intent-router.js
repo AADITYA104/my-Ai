@@ -9,6 +9,18 @@
 
 const INTENT_PATTERNS = [
   {
+    intent: "stop_command",
+    patterns: [
+      /fully\s*stop|sampurna\s*band|stop\s*ultron|shut\s*down|exit\s*ultron|ultron\s+stop|band\s*kar\s*ultron|stop\s+now|close\s+ultron|terminate/i
+    ]
+  },
+  {
+    intent: "mute_command",
+    patterns: [
+      /chup\s*rahe|thodi\s*var\s*band|mute\s*kar|be\s*quiet|silence|mute\s*yourself|shant\s*rahe|chup\s*thi\s*ja|quiet\s*mode/i
+    ]
+  },
+  {
     intent: "smart_home",
     patterns: [
       /light|બત્તી|લાઇટ|ac|air\s*conditioner|fan|thermostat|temperature|lamp|switch/i
@@ -17,7 +29,7 @@ const INTENT_PATTERNS = [
   {
     intent: "system_control",
     patterns: [
-      /volume|brightness|sound|mute|play|pause|media|calc|calculator|notepad|terminal|chrome|vs\s*code|open\s+app|network|wifi|ping/i
+      /volume|brightness|sound|play|pause|media|calc|calculator|notepad|terminal|chrome|vs\s*code|open\s+app|network|wifi|ping/i
     ]
   },
   {
@@ -36,18 +48,6 @@ const INTENT_PATTERNS = [
     intent: "communication",
     patterns: [
       /telegram|whatsapp|message|email|send\s+msg|draft/i
-    ]
-  },
-  {
-    intent: "stop_command",
-    patterns: [
-      /fully\s*stop|sampurna\s*band|stop\s*ultron|shut\s*down|exit\s*ultron/i
-    ]
-  },
-  {
-    intent: "mute_command",
-    patterns: [
-      /chup\s*rahe|thodi\s*var\s*band|mute\s*kar|be\s*quiet|silence/i
     ]
   }
 ];

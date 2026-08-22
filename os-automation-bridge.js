@@ -71,18 +71,22 @@ class OSAutomationBridge {
   captureScreen(outputPath) {
     if (!this.isWindows) return { success: false, error: "Only supported on Windows" };
     try {
-      const psScript = `
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-$screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-$bitmap = New-Object System.Drawing.Bitmap $screen.Width, $screen.Height
-$graphic = [System.Drawing.Graphics]::FromImage($bitmap)
-$graphic.CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size)
-$bitmap.Save('${outputPath.replace(/\\/g, "/")}', [System.Drawing.Imaging.ImageFormat]::Png)
-$graphic.Dispose()
-$bitmap.Dispose()
-`;
-      execSync(`powershell -NoProfile -Command "${psScript.replace(/\n/g, " ")}"`, { timeout: 15000 });
+      const safePath = outputPath.replace(/\\/g, "\\\\");
+      const psLines = [
+        "Add-Type -AssemblyName System.Windows.Forms",
+        "Add-Type -AssemblyName System.Drawing",
+        "$screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds",
+        "$bitmap = New-Object System.Drawing.Bitmap($screen.Width, $screen.Height)",
+        "$graphic = [System.Drawing.Graphics]::FromImage($bitmap)",
+        "$origin = New-Object System.Drawing.Point(0, 0)",
+        "$graphic.CopyFromScreen($screen.Location, $origin, $screen.Size)",
+        `$bitmap.Save('${safePath}', [System.Drawing.Imaging.ImageFormat]::Png)`,
+        "$graphic.Dispose()",
+        "$bitmap.Dispose()"
+      ].join("; ");
+      // Encode as Base64 to avoid inline quoting issues
+      const encoded = Buffer.from(psLines, "utf16le").toString("base64");
+      execSync(`powershell -NoProfile -EncodedCommand ${encoded}`, { timeout: 15000 });
       return { success: true, path: outputPath };
     } catch (err) {
       return { success: false, error: err.message };

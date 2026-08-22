@@ -48,6 +48,17 @@ class DestructiveGuard {
       reason: "High-risk system operation detected. Explicit confirmation required from Boss."
     };
   }
+  /**
+   * Alias for evaluateCommand — checks if command is blocked
+   */
+  checkCommand(cmd) {
+    const result = this.evaluateCommand(cmd, false);
+    return {
+      blocked: !result.allowed,
+      requiresConfirmation: result.requiresConfirmation || false,
+      reason: result.reason || null
+    };
+  }
 }
 
 module.exports = new DestructiveGuard();
