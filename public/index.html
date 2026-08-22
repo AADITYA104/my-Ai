@@ -238,7 +238,7 @@
     #chat-input::placeholder { color: rgba(0,243,255,0.3); }
     #chat-input:focus { border-color: var(--cyan); box-shadow: 0 0 14px rgba(0,243,255,0.15); }
 
-    #send-btn, #portfolio-btn {
+    #send-btn {
       padding: 10px 20px;
       border: 1px solid var(--cyan);
       background: transparent;
@@ -250,8 +250,6 @@
     }
 
     #send-btn:hover { background: rgba(0,243,255,0.12); box-shadow: 0 0 18px rgba(0,243,255,0.3); }
-    #portfolio-btn { border-color: var(--violet); color: var(--violet); margin-top: 4px; width: 100%; }
-    #portfolio-btn:hover { background: rgba(157,78,221,0.1); box-shadow: 0 0 14px rgba(157,78,221,0.3); }
 
     /* ── PANEL WIDGETS ──────────────────────────────────────────── */
     .panel-title {
@@ -456,10 +454,6 @@
         <input id="chat-input" type="text" placeholder="Speak your command, Boss..." autocomplete="off" />
         <button id="send-btn">SEND</button>
       </div>
-
-      <button id="portfolio-btn" onclick="window.location.href='/portfolio'">
-        ⬡ VIEW 3D STORYTELLING PORTFOLIO
-      </button>
     </div>
   </div>
 
