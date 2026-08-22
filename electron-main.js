@@ -1,4 +1,15 @@
-const { app, BrowserWindow, ipcMain, screen } = require('electron');
+let electron;
+try {
+  electron = require('electron');
+} catch (_) {
+  if (require.main === module) {
+    console.log("ℹ️ [ELECTRON NOTICE] Electron is optional. To run floating desktop overlay: npm install electron");
+  }
+  module.exports = { isAvailable: false };
+  return;
+}
+
+const { app, BrowserWindow, ipcMain, screen } = electron;
 const path = require('path');
 const { spawn } = require('child_process');
 

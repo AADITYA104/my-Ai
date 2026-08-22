@@ -7,8 +7,17 @@
  */
 "use strict";
 
-const { Porcupine } = require("@picovoice/porcupine-node");
-const { PvRecorder } = require("@picovoice/pvrecorder-node");
+let Porcupine = null;
+let PvRecorder = null;
+try {
+  const pNode = require("@picovoice/porcupine-node");
+  Porcupine = pNode.Porcupine;
+} catch (_) {}
+try {
+  const rNode = require("@picovoice/pvrecorder-node");
+  PvRecorder = rNode.PvRecorder;
+} catch (_) {}
+
 const path = require("path");
 const fs = require("fs");
 const { isStopped, getMuteStatus } = require("../security/full-stop");
