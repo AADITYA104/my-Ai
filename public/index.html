@@ -251,6 +251,114 @@
 
     #send-btn:hover { background: rgba(0,243,255,0.12); box-shadow: 0 0 18px rgba(0,243,255,0.3); }
 
+    /* ── VOICE & MIC HUD ────────────────────────────────────────── */
+    #voice-hud-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 14px;
+      background: rgba(0,243,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 11px;
+      letter-spacing: 1px;
+    }
+
+    #mic-status-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--green);
+      font-weight: 700;
+      letter-spacing: 2px;
+      font-size: 10px;
+    }
+
+    #mic-status-badge.muted {
+      color: var(--red);
+    }
+
+    #mic-status-badge.listening {
+      color: var(--cyan);
+      text-shadow: 0 0 8px var(--cyan);
+      animation: pulse-green 1.2s infinite;
+    }
+
+    #speech-subtitle {
+      flex: 1;
+      color: rgba(0,243,255,0.7);
+      font-style: italic;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 11px;
+    }
+
+    #wave-bars {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      height: 18px;
+    }
+
+    .wbar {
+      width: 3px;
+      height: 4px;
+      background: var(--cyan);
+      border-radius: 1px;
+      transition: height 0.08s ease;
+      box-shadow: 0 0 6px var(--cyan);
+    }
+
+    #mic-btn {
+      padding: 10px 16px;
+      border: 1px solid var(--cyan);
+      background: rgba(0,243,255,0.06);
+      color: var(--cyan);
+      font-family: inherit;
+      font-size: 12px;
+      letter-spacing: 2px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+    }
+
+    #mic-btn.active {
+      background: rgba(0,243,255,0.18);
+      border-color: var(--cyan);
+      box-shadow: 0 0 16px rgba(0,243,255,0.4);
+      color: #fff;
+    }
+
+    #mic-btn.muted {
+      border-color: var(--red);
+      color: var(--red);
+      background: rgba(239,68,68,0.08);
+    }
+
+    #voice-prompt-banner {
+      background: rgba(0,243,255,0.1);
+      border: 1px dashed var(--cyan);
+      padding: 10px;
+      text-align: center;
+      cursor: pointer;
+      color: var(--cyan);
+      letter-spacing: 2px;
+      font-size: 11px;
+      animation: pulse-green 2s infinite;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+    }
+
+    #voice-prompt-banner:hover {
+      background: rgba(0,243,255,0.25);
+      box-shadow: 0 0 20px rgba(0,243,255,0.4);
+    }
+
+
     /* ── PANEL WIDGETS ──────────────────────────────────────────── */
     .panel-title {
       font-size: 10px; letter-spacing: 3px; color: var(--cyan);
@@ -439,19 +547,42 @@
       <div id="boot-lines"></div>
     </div>
 
-    <!-- ULTRON Chat Interface (shown after boot) -->
+    <!-- ULTRON Chat & Voice Interface (shown after boot) -->
     <div id="chat-ui">
       <div id="chat-title">ULTRON</div>
       <div id="chat-subtitle">SOVEREIGN AI OMNI-ENGINE · 717 SKILLS · VERSION 2026</div>
 
+      <!-- One-click Voice & Mic Activation Trigger -->
+      <div id="voice-prompt-banner" onclick="enableUltronVoice()">
+        🎙️ <strong>CLICK HERE TO ACTIVATE VOICE & MIC</strong> (SAY "ULTRON" ANYTIME)
+      </div>
+
+      <!-- Live Voice Holographic Strip -->
+      <div id="voice-hud-strip">
+        <div id="mic-status-badge" class="listening">
+          <span id="mic-status-icon">●</span> <span id="mic-status-text">LISTENING</span>
+        </div>
+        <div id="speech-subtitle">Say "Ultron" or speak your command...</div>
+        <div id="wave-bars">
+          <div class="wbar"></div><div class="wbar"></div><div class="wbar"></div>
+          <div class="wbar"></div><div class="wbar"></div><div class="wbar"></div>
+          <div class="wbar"></div><div class="wbar"></div><div class="wbar"></div>
+          <div class="wbar"></div><div class="wbar"></div><div class="wbar"></div>
+        </div>
+      </div>
+
       <div id="chat-screen">
         <div class="chat-row sys">// NEURAL UPLINK ESTABLISHED — ALL SYSTEMS NOMINAL</div>
         <div class="chat-row sys">// 717 MASTER SKILLS LOADED · AGENTDB ACTIVE · WATCHDOG ARMED</div>
-        <div class="chat-row ultron">Online and fully operational, Boss. How can I serve you?</div>
+        <div class="chat-row sys">// 🎙️ VOICE ENGINE: SAY "ULTRON" OR CLICK MIC TO SPEAK</div>
+        <div class="chat-row ultron">Online and fully operational, Boss. Say "Ultron" or type a command!</div>
       </div>
 
       <div id="chat-input-row">
-        <input id="chat-input" type="text" placeholder="Speak your command, Boss..." autocomplete="off" />
+        <button id="mic-btn" class="active" onclick="toggleVoiceListening()" title="Toggle Microphone">
+          <span id="mic-btn-icon">🎙️</span> <span id="mic-btn-label">MIC ON</span>
+        </button>
+        <input id="chat-input" type="text" placeholder="Speak 'Ultron' or type command, Boss..." autocomplete="off" />
         <button id="send-btn">SEND</button>
       </div>
     </div>
@@ -735,10 +866,25 @@ function animateSkillBars() {
 // ============================================================
 // 7. CHAT INTERFACE WITH ULTRON API
 // ============================================================
-const chatInput  = document.getElementById("chat-input");
-const sendBtn    = document.getElementById("send-btn");
-const chatScreen = document.getElementById("chat-screen");
-let convHistory  = [];
+// 7. CHAT & CONTINUOUS VOICE ENGINE
+// ============================================================
+const chatInput      = document.getElementById("chat-input");
+const sendBtn        = document.getElementById("send-btn");
+const chatScreen     = document.getElementById("chat-screen");
+const micBtn         = document.getElementById("mic-btn");
+const micBtnLabel    = document.getElementById("mic-btn-label");
+const micBtnIcon     = document.getElementById("mic-btn-icon");
+const micStatusBadge = document.getElementById("mic-status-badge");
+const micStatusText  = document.getElementById("mic-status-text");
+const speechSubtitle = document.getElementById("speech-subtitle");
+const voiceBanner    = document.getElementById("voice-prompt-banner");
+const waveBars       = document.querySelectorAll(".wbar");
+
+let convHistory      = [];
+let speechRecognizer = null;
+let isMicListening   = false;
+let isUltronSpeaking = false;
+let waveAnimationInterval = null;
 
 function appendChat(role, text) {
   const div = document.createElement("div");
@@ -748,12 +894,188 @@ function appendChat(role, text) {
   chatScreen.scrollTop = chatScreen.scrollHeight;
 }
 
-async function sendMessage() {
-  const msg = chatInput.value.trim();
-  if (!msg) return;
-  chatInput.value = "";
-  appendChat("user", msg);
+// ── AUDIO WAVE EQUALIZER ANIMATION ────────────────────────────
+function setWaveAnimation(active, intensity = 0.5) {
+  if (active) {
+    if (waveAnimationInterval) clearInterval(waveAnimationInterval);
+    waveAnimationInterval = setInterval(() => {
+      waveBars.forEach(bar => {
+        const height = Math.floor(4 + Math.random() * (intensity * 20));
+        bar.style.height = `${height}px`;
+      });
+    }, 80);
+  } else {
+    if (waveAnimationInterval) clearInterval(waveAnimationInterval);
+    waveBars.forEach(bar => { bar.style.height = "4px"; });
+  }
+}
 
+// ── TEXT-TO-SPEECH (TTS) ──────────────────────────────────────
+function speakUltronReply(text) {
+  if (!window.speechSynthesis) return;
+
+  window.speechSynthesis.cancel();
+  isUltronSpeaking = true;
+  setWaveAnimation(true, 0.9);
+
+  if (speechSubtitle) speechSubtitle.textContent = `ULTRON: "${text}"`;
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 1.05;
+  utterance.pitch = 0.95;
+
+  const voices = window.speechSynthesis.getVoices();
+  const preferredVoice = voices.find(v => v.name.includes("Natural") || v.name.includes("Google") || v.name.includes("Neural")) ||
+                         voices.find(v => v.lang.includes("en-US") || v.lang.includes("en-GB") || v.lang.includes("hi-IN"));
+  if (preferredVoice) utterance.voice = preferredVoice;
+
+  utterance.onend = () => {
+    isUltronSpeaking = false;
+    setWaveAnimation(false);
+    if (speechSubtitle) speechSubtitle.textContent = 'Listening for "Ultron" or next command...';
+    if (isMicListening && speechRecognizer) {
+      try { speechRecognizer.start(); } catch (_) {}
+    }
+  };
+
+  utterance.onerror = () => {
+    isUltronSpeaking = false;
+    setWaveAnimation(false);
+  };
+
+  window.speechSynthesis.speak(utterance);
+}
+
+// ── CONTINUOUS SPEECH RECOGNITION (WAKE WORD + COMMANDS) ──────
+function initSpeechRecognition() {
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRec) {
+    if (speechSubtitle) speechSubtitle.textContent = "Speech recognition unavailable in this browser. Use chat!";
+    return;
+  }
+
+  speechRecognizer = new SpeechRec();
+  speechRecognizer.continuous = true;
+  speechRecognizer.interimResults = true;
+  speechRecognizer.maxAlternatives = 1;
+
+  speechRecognizer.onstart = () => {
+    isMicListening = true;
+    updateMicUI(true);
+    if (speechSubtitle) speechSubtitle.textContent = '🎙️ Listening... Say "Ultron" or speak command';
+  };
+
+  speechRecognizer.onend = () => {
+    // Keep alive automatically unless muted or Ultron is speaking
+    if (isMicListening && !isUltronSpeaking) {
+      try { speechRecognizer.start(); } catch (_) {}
+    }
+  };
+
+  speechRecognizer.onerror = (e) => {
+    if (e.error === "not-allowed") {
+      if (speechSubtitle) speechSubtitle.textContent = "Microphone access blocked. Click the banner to enable!";
+      updateMicUI(false);
+    }
+  };
+
+  speechRecognizer.onresult = (event) => {
+    let interimText = "";
+    let finalText = "";
+
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        finalText += event.results[i][0].transcript;
+      } else {
+        interimText += event.results[i][0].transcript;
+      }
+    }
+
+    const liveText = (finalText || interimText).trim();
+    if (liveText && speechSubtitle) {
+      speechSubtitle.textContent = `BOSS: "${liveText}"`;
+      setWaveAnimation(true, 0.4);
+    }
+
+    if (finalText.trim().length > 0) {
+      handleHeardSpeech(finalText.trim());
+    }
+  };
+}
+
+function handleHeardSpeech(spoken) {
+  const lower = spoken.toLowerCase();
+  const wakeTriggers = ["ultron", "hey ultron", "ok ultron", "અલ્ટ્રોન", "अल्ट्रॉन", "altron", "oltron", "ultran"];
+  const hasWakeWord = wakeTriggers.some(w => lower.includes(w));
+
+  // Strip wake word to extract command
+  let cleanCommand = spoken;
+  wakeTriggers.forEach(w => {
+    cleanCommand = cleanCommand.replace(new RegExp(w, "gi"), "").trim();
+  });
+
+  if (hasWakeWord && !cleanCommand) {
+    speakUltronReply("Yes Boss, I am listening. What are your orders?");
+    return;
+  }
+
+  const queryToSend = cleanCommand || spoken;
+  if (queryToSend.length > 1) {
+    sendMessage(queryToSend, true);
+  }
+}
+
+function enableUltronVoice() {
+  if (voiceBanner) voiceBanner.style.display = "none";
+  if (!speechRecognizer) initSpeechRecognition();
+  
+  isMicListening = true;
+  try {
+    speechRecognizer.start();
+  } catch (_) {}
+  
+  updateMicUI(true);
+  speakUltronReply("Voice uplink active, Boss. I am listening.");
+}
+
+function toggleVoiceListening() {
+  if (isMicListening) {
+    isMicListening = false;
+    if (speechRecognizer) {
+      try { speechRecognizer.stop(); } catch (_) {}
+    }
+    updateMicUI(false);
+  } else {
+    enableUltronVoice();
+  }
+}
+
+function updateMicUI(active) {
+  if (active) {
+    micBtn.classList.add("active");
+    micBtn.classList.remove("muted");
+    micBtnLabel.textContent = "MIC ON";
+    micBtnIcon.textContent = "🎙️";
+    micStatusBadge.className = "listening";
+    micStatusText.textContent = "LISTENING";
+  } else {
+    micBtn.classList.remove("active");
+    micBtn.classList.add("muted");
+    micBtnLabel.textContent = "MUTED";
+    micBtnIcon.textContent = "🛑";
+    micStatusBadge.className = "muted";
+    micStatusText.textContent = "MUTED";
+    setWaveAnimation(false);
+  }
+}
+
+// ── SEND MESSAGE DISPATCHER ───────────────────────────────────
+async function sendMessage(overrideText = null, fromVoice = false) {
+  const msg = (overrideText !== null ? overrideText : chatInput.value).trim();
+  if (!msg) return;
+  
+  if (overrideText === null) chatInput.value = "";
+  appendChat("user", msg);
   convHistory.push({ role: "user", content: msg });
 
   const thinkDiv = document.createElement("div");
@@ -770,17 +1092,27 @@ async function sendMessage() {
     });
     const data = await res.json();
     chatScreen.removeChild(thinkDiv);
-    const reply = data.reply || "System error.";
+    const reply = data.reply || "System operational, Boss.";
     appendChat("ultron", reply);
     convHistory.push({ role: "assistant", content: reply });
+
+    if (fromVoice || isMicListening) {
+      speakUltronReply(reply);
+    }
   } catch (e) {
     chatScreen.removeChild(thinkDiv);
     appendChat("ultron", "Neural channel disruption. Please retry, Boss.");
+    if (fromVoice) speakUltronReply("Neural channel disruption. Please retry, Boss.");
   }
 }
 
-sendBtn.addEventListener("click", sendMessage);
+sendBtn.addEventListener("click", () => sendMessage());
 chatInput.addEventListener("keydown", e => { if (e.key === "Enter") sendMessage(); });
+
+// Auto-initialize Speech on first user click anywhere in the window
+window.addEventListener("click", () => {
+  if (!speechRecognizer) initSpeechRecognition();
+}, { once: true });
 </script>
 
 </body>

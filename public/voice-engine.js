@@ -9,10 +9,10 @@ let speechRecognizer = null;
 let isMicActive = true;
 let isSpeaking = false;
 
-const speechSubtitle = document.getElementById("live-speech-subtitle");
+const speechSubtitle = document.getElementById("speech-subtitle") || document.getElementById("live-speech-subtitle");
 const micBtn = document.getElementById("mic-btn");
-const micLbl = document.getElementById("mic-lbl");
-const waveBars = document.querySelectorAll("#wave-bars .wbar");
+const micLbl = document.getElementById("mic-btn-label") || document.getElementById("mic-lbl");
+const waveBars = document.querySelectorAll(".wbar");
 
 function initVoiceEngine() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -32,7 +32,6 @@ function initVoiceEngine() {
   };
 
   speechRecognizer.onend = () => {
-    // Keep alive if user hasn't muted and Ultron isn't currently speaking
     if (isMicActive && !isSpeaking) {
       try { speechRecognizer.start(); } catch (_) {}
     }
@@ -56,7 +55,7 @@ function initVoiceEngine() {
 
     const displayText = (finalTranscript || interimTranscript).trim();
     if (displayText && speechSubtitle) {
-      speechSubtitle.innerText = `"${displayText}"`;
+      speechSubtitle.innerText = `BOSS: "${displayText}"`;
     }
 
     if (finalTranscript.trim().length > 0) {
@@ -92,9 +91,11 @@ function updateMicUI(active) {
   if (!micBtn) return;
   if (active) {
     micBtn.classList.add("active");
-    if (micLbl) micLbl.innerText = "LISTENING";
+    micBtn.classList.remove("muted");
+    if (micLbl) micLbl.innerText = "MIC ON";
   } else {
     micBtn.classList.remove("active");
+    micBtn.classList.add("muted");
     if (micLbl) micLbl.innerText = "MUTED";
   }
 }
@@ -103,61 +104,42 @@ async function processHeardVoice(transcript) {
   const lower = transcript.toLowerCase();
   console.log("[HEARD VOICE]", transcript);
 
-  // Check wake-word triggers: "ultron", "hey ultron", "અલ્ટ્રોન", "अल्ट्रॉन"
-  const isWakeWord = lower.includes("ultron") || lower.includes("અલ્ટ્રોન") || lower.includes("अल्ट्रॉन");
-  
-  // Clean command text
-  let command = transcript.replace(/hey ultron|ultron|અલ્ટ્રોન|अल्ट्रॉन/gi, "").trim();
+  const isWakeWord = lower.includes("ultron") || lower.includes("hey ultron") || lower.includes("અલ્ટ્રોન") || lower.includes("अल्ट्रॉन");
+  let command = transcript.replace(/hey ultron|ultron|અલ્ટ્રોન|अल्ट્રॉन/gi, "").trim();
 
   if (isWakeWord && !command) {
     ultronSpeak("Yes Boss, I am listening. What are your orders?");
     return;
   }
 
-  // If command given or wake word spoken
-  if (isWakeWord || command.length > 3) {
+  if (isWakeWord || command.length > 2) {
     const finalQuery = command || transcript;
-    
-    // Check if Boss wants chat
-    if (/(chat|ચેટ|લખીને|console|terminal)/i.test(finalQuery)) {
-      if (window.openHoloChat) window.openHoloChat();
-      ultronSpeak("Opening holographic chat console for you, Boss.");
-      return;
-    }
-
-    // Send to backend
     await sendQueryToUltron(finalQuery, true);
   }
 }
 
-async function sendQueryToUltron(promptText, speakBack = true, alreadyAppendedUser = false, image = null) {
+async function sendQueryToUltron(promptText, speakBack = true) {
   try {
     if (speechSubtitle) speechSubtitle.innerText = "Processing order, Boss...";
 
     const res = await fetch("/api/ultron/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: promptText, image })
+      body: JSON.stringify({ message: promptText })
     });
 
     const data = await res.json();
     const reply = data.reply || "Yes Boss, system operational.";
 
-    if (data.wantsChat && window.openHoloChat) {
-      window.openHoloChat();
-    }
-
-    if (window.appendChatEntry) {
-      if (!alreadyAppendedUser) {
-        window.appendChatEntry("user", promptText, image);
-      }
-      window.appendChatEntry("ultron", reply);
+    if (window.appendChat) {
+      window.appendChat("user", promptText);
+      window.appendChat("ultron", reply);
     }
 
     if (speakBack) {
       ultronSpeak(reply);
     } else {
-      if (speechSubtitle) speechSubtitle.innerText = `"${reply}"`;
+      if (speechSubtitle) speechSubtitle.innerText = `ULTRON: "${reply}"`;
     }
   } catch (err) {
     console.error("[ULTRON COMM ERROR]", err);
@@ -178,14 +160,13 @@ function ultronSpeak(text) {
   utterance.rate = 1.05;
   utterance.pitch = 0.95;
 
-  // Find best natural voice
   const voices = window.speechSynthesis.getVoices();
-  const naturalVoice = voices.find(v => v.name.includes("Natural") || v.name.includes("Google") || v.name.includes("Online") || v.name.includes("Neural")) ||
+  const naturalVoice = voices.find(v => v.name.includes("Natural") || v.name.includes("Google") || v.name.includes("Neural")) ||
                        voices.find(v => v.lang.includes("en-US") || v.lang.includes("en-GB") || v.lang.includes("hi-IN"));
   if (naturalVoice) utterance.voice = naturalVoice;
 
   utterance.onstart = () => {
-    if (speechSubtitle) speechSubtitle.innerText = `"${text}"`;
+    if (speechSubtitle) speechSubtitle.innerText = `ULTRON: "${text}"`;
     startWaveAnimation(true);
   };
 
@@ -210,19 +191,14 @@ function startWaveAnimation(active) {
   if (active) {
     if (waveTimer) clearInterval(waveTimer);
     waveTimer = setInterval(() => {
-      const intensity = 0.4 + Math.random() * 0.6;
-      if (typeof setUltronAudioReactivity === "function") setUltronAudioReactivity(intensity);
       waveBars.forEach(b => {
         b.style.height = `${Math.floor(4 + Math.random() * 20)}px`;
       });
     }, 70);
   } else {
     if (waveTimer) clearInterval(waveTimer);
-    if (typeof setUltronAudioReactivity === "function") setUltronAudioReactivity(0);
     waveBars.forEach(b => {
       b.style.height = "4px";
     });
   }
 }
-
-window.addEventListener("DOMContentLoaded", initVoiceEngine);
