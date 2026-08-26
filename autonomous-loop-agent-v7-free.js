@@ -224,6 +224,8 @@ function calculateTaskCost(totalTokens) {
   const pricingTable = {
     "ollama": { inputPerM: 0.0, outputPerM: 0.0, label: "Local Ollama (Free)" },
     "local": { inputPerM: 0.0, outputPerM: 0.0, label: "Local Engine (Free)" },
+    "deepseek-chat": { inputPerM: 0.14, outputPerM: 0.28, label: "DeepSeek V4 / Chat" },
+    "deepseek-reasoner": { inputPerM: 0.55, outputPerM: 2.19, label: "DeepSeek R1 / Reasoner" },
     "gemini-flash": { inputPerM: 0.075, outputPerM: 0.30, label: "Gemini 2.5/3.5 Flash" },
     "gemini-pro": { inputPerM: 1.25, outputPerM: 5.00, label: "Gemini Pro" },
     "claude-sonnet": { inputPerM: 3.00, outputPerM: 15.00, label: "Claude Sonnet" },

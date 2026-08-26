@@ -201,5 +201,29 @@
     "category": "guide",
     "timestamp": "2026-08-22T16:10:50.014Z",
     "accessCount": 0
+  },
+  {
+    "id": "mem_782rfy5i5",
+    "topic": "Database Migration Guide",
+    "content": "How to run postgres and prisma migrations safely in 2026",
+    "tags": [
+      "db",
+      "prisma"
+    ],
+    "category": "guide",
+    "timestamp": "2026-08-26T18:09:55.920Z",
+    "accessCount": 0
+  },
+  {
+    "id": "mem_th5kjnry8",
+    "topic": "Frontend Styling Rules",
+    "content": "CSS variables, Tailwind colors, and brutalist design tokens",
+    "tags": [
+      "ui",
+      "css"
+    ],
+    "category": "guide",
+    "timestamp": "2026-08-26T18:09:55.928Z",
+    "accessCount": 0
   }
 ]

@@ -10,6 +10,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { sessionStore } = require("./session-store");
 
 class SessionContinuity {
   constructor() {
@@ -17,6 +18,7 @@ class SessionContinuity {
     this.stateFile = path.join(this.memoryDir, "project-state.json");
     this.memoryFile = path.join(this.memoryDir, "memory.md");
     this.snapshotDir = path.join(this.memoryDir, ".snapshots");
+    this.sessionStore = sessionStore;
     this.ensureDirs();
   }
 
@@ -134,6 +136,30 @@ class SessionContinuity {
     const actions = current.next_actions || [];
     actions.push(action);
     return this.updateState({ next_actions: actions });
+  }
+
+  logTurn(role, content, reasoning = null, toolCalls = null) {
+    try {
+      const state = this.getState();
+      const sid = state.session_id || "default_session";
+      this.sessionStore.logEvent(sid, {
+        role,
+        content,
+        reasoning,
+        tool_calls: toolCalls
+      });
+    } catch (err) {
+      console.warn("[SESSION CONTINUITY LOG ERROR]", err.message);
+    }
+  }
+
+  searchHistoricalMemory(query, limit = 5) {
+    try {
+      return this.sessionStore.search(query, limit);
+    } catch (err) {
+      console.warn("[SESSION SEARCH ERROR]", err.message);
+      return [];
+    }
   }
 
   getContextPrompt() {

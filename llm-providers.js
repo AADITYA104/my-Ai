@@ -14,6 +14,8 @@ const path = require("path");
 const sessionContinuity = require("./session-continuity");
 const skillEngine = require("./unified-skill-engine");
 const { getTaskConfig, injectRecencyConstraints } = require("./task-classifier");
+const { callDeepSeek, checkDeepSeekHealth } = require("./deepseek-provider");
+const { compactContext, estimateTokens, pruneToolResultsInMessages } = require("./context-compactor");
 
 // Load .env
 try {
@@ -34,36 +36,15 @@ try {
 } catch (_) {}
 
 function detectProvider() {
+  if (process.env.DEEPSEEK_API_KEY) return "tri-engine-deepseek-cascade";
   return "dual-engine-low-load-router";
 }
 
 // ---------------------------------------------------------------------------
-// 0. TOKEN BUDGET PRE-CHECK & CONTEXT PRUNING
+// 0. TOKEN BUDGET PRE-CHECK & SMART CONTEXT COMPACTION
 // ---------------------------------------------------------------------------
-function estimateTokens(text) {
-  if (!text) return 0;
-  if (typeof text !== "string") text = JSON.stringify(text);
-  return Math.ceil(text.length / 3.8);
-}
-
 function pruneContextIfNeeded(messages, maxTokens = 16000) {
-  if (!Array.isArray(messages) || messages.length <= 4) return messages;
-
-  let totalTokens = messages.reduce((acc, m) => acc + estimateTokens(m.content), 0);
-  if (totalTokens <= maxTokens) return messages;
-
-  console.log(`⚠️ [TOKEN GUARD] Context size (${totalTokens} tokens) exceeds limit (${maxTokens}). Pruning oldest turns...`);
-
-  const preservedHead = messages.slice(0, 1);
-  const preservedTail = messages.slice(-3);
-  let middleTurns = messages.slice(1, -3);
-
-  while (middleTurns.length > 0 && totalTokens > maxTokens) {
-    const removed = middleTurns.shift();
-    totalTokens -= estimateTokens(removed.content);
-  }
-
-  return [...preservedHead, { role: "user", content: "[SYSTEM]: ...Older conversation context condensed..." }, ...middleTurns, ...preservedTail];
+  return compactContext(messages, maxTokens);
 }
 
 // ---------------------------------------------------------------------------
@@ -342,7 +323,7 @@ async function callOllama(messages, system, maxRetries = 3, taskConfig = null) {
 }
 
 // ---------------------------------------------------------------------------
-// 5. LOW-LOAD SMART DISPATCHER WITH DYNAMIC TASK CLASSIFICATION
+// 5. LOW-LOAD SMART DISPATCHER WITH TRI-ENGINE CASCADE (DEEPSEEK + GEMINI + OLLAMA)
 // ---------------------------------------------------------------------------
 async function callUniversalLLM(messages, system, tools = null) {
   const continuityContext = sessionContinuity.getContextPrompt();
@@ -353,7 +334,9 @@ async function callUniversalLLM(messages, system, tools = null) {
   const taskConfig = getTaskConfig(queryStr);
 
   const isOfflineForced = process.env.FORCE_OFFLINE === "true";
+  const hasDeepSeekKey = Boolean(process.env.DEEPSEEK_API_KEY);
 
+  // Forced Offline Mode
   if (isOfflineForced) {
     try {
       return await callOllama(messages, baseSystemWithContinuity, 3, taskConfig);
@@ -362,11 +345,39 @@ async function callUniversalLLM(messages, system, tools = null) {
     }
   }
 
+  const isDeep = (tools && tools.length > 0) || taskConfig.taskType === "coding" || taskConfig.taskType === "audit" || taskConfig.taskType === "research";
+
+  // Tier 0: DeepSeek for high-reasoning/coding/audit tasks when key is configured
+  if (hasDeepSeekKey && (isDeep || process.env.PREFERRED_PROVIDER === "deepseek")) {
+    try {
+      return await callDeepSeek(messages, baseSystemWithContinuity, tools, {
+        temperature: taskConfig.temperature,
+        maxTokens: taskConfig.maxTokens,
+        reasoningEffort: isDeep ? "high" : "low"
+      });
+    } catch (deepseekErr) {
+      console.warn("⚠️ [DEEPSEEK FAILOVER TO GEMINI]", deepseekErr.message);
+    }
+  }
+
+  // Tier 1: Google Gemini (High Speed, Free Tier, 0% CPU/RAM)
   try {
-    const isDeep = (tools && tools.length > 0) || taskConfig.taskType === "coding" || taskConfig.taskType === "audit";
     return await callGemini(messages, baseSystemWithContinuity, tools, isDeep ? "deep" : "fast", taskConfig);
-  } catch (cloudErr) {
-    console.warn("[CLOUD FAILOVER TO LOCAL]", cloudErr.message);
+  } catch (geminiErr) {
+    console.warn("⚠️ [GEMINI FAILOVER]", geminiErr.message);
+
+    // If Gemini fails and DeepSeek key is available (and not tried yet), try DeepSeek
+    if (hasDeepSeekKey && !isDeep && process.env.PREFERRED_PROVIDER !== "deepseek") {
+      try {
+        return await callDeepSeek(messages, baseSystemWithContinuity, tools, {
+          temperature: taskConfig.temperature,
+          maxTokens: taskConfig.maxTokens
+        });
+      } catch (_) {}
+    }
+
+    // Tier 2: Local Ollama Fallback (100% Offline Guaranteed)
+    console.warn("⚠️ [FAILOVER TO LOCAL OLLAMA]");
     return await callOllama(messages, baseSystemWithContinuity, 3, taskConfig);
   }
 }
@@ -374,8 +385,10 @@ async function callUniversalLLM(messages, system, tools = null) {
 module.exports = {
   detectProvider,
   callUniversalLLM,
+  callDeepSeek,
   callGemini,
   callOllama,
+  checkDeepSeekHealth,
   estimateTokens,
   pruneContextIfNeeded,
   jitteredBackoff

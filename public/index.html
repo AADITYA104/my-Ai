@@ -382,6 +382,67 @@
       box-shadow: 0 0 20px rgba(0,243,255,0.4);
     }
 
+    /* ── REASONING TRACE & TOOL CHIPS (DEEPSEEK HARNESS) ────────── */
+    .reasoning-trace {
+      margin-top: 6px;
+      margin-bottom: 6px;
+      background: rgba(0, 243, 255, 0.04);
+      border: 1px dashed rgba(0, 243, 255, 0.3);
+      border-radius: 4px;
+      padding: 6px 10px;
+      font-size: 11px;
+      color: rgba(0, 243, 255, 0.85);
+      cursor: pointer;
+    }
+
+    .reasoning-trace summary {
+      outline: none;
+      font-weight: 600;
+      letter-spacing: 1px;
+      color: var(--cyan);
+      user-select: none;
+    }
+
+    .reasoning-trace pre {
+      margin-top: 8px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: inherit;
+      color: rgba(255, 255, 255, 0.75);
+      line-height: 1.5;
+      max-height: 200px;
+      overflow-y: auto;
+      border-left: 2px solid var(--cyan);
+      padding-left: 8px;
+    }
+
+    .tool-badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .tool-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(255, 215, 0, 0.1);
+      border: 1px solid rgba(255, 215, 0, 0.4);
+      color: #ffd700;
+      font-size: 10px;
+      letter-spacing: 1px;
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+
+    .model-chip {
+      display: inline-block;
+      margin-top: 4px;
+      font-size: 9px;
+      letter-spacing: 1px;
+      color: rgba(0, 243, 255, 0.6);
+    }
 
     /* ── PANEL WIDGETS ──────────────────────────────────────────── */
     .panel-title {
@@ -603,7 +664,8 @@
 
       <div id="chat-screen">
         <div class="chat-row sys">// NEURAL UPLINK ESTABLISHED — ALL SYSTEMS NOMINAL</div>
-        <div class="chat-row sys">// 717 MASTER SKILLS LOADED · AGENTDB ACTIVE · WATCHDOG ARMED</div>
+        <div class="chat-row sys">// 717 MASTER SKILLS · AGENTDB ACTIVE · WATCHDOG ARMED</div>
+        <div class="chat-row sys">// 🧠 DEEPSEEK V4 REASONING + WORKER SANDBOX + SQLITE FTS5 PERSISTENCE READY</div>
         <div class="chat-row sys">// 🎙️ VOICE ENGINE: SAY "ULTRON" OR CLICK MIC TO SPEAK</div>
         <div class="chat-row ultron">Online and fully operational, Boss. Say "Ultron" or type a command!</div>
       </div>
@@ -637,9 +699,12 @@
     </div>
 
     <div class="panel-title" style="margin-top: auto;">◈ NEURAL PROVIDER</div>
-    <div class="stat-row"><span class="label">PRIMARY</span><span class="val green" id="telem-provider">GEMINI CASCADE</span></div>
+    <div class="stat-row"><span class="label">PRIMARY</span><span class="val green" id="telem-provider">GEMINI / DEEPSEEK</span></div>
+    <div class="stat-row"><span class="label">REASONING</span><span class="val cyan">DEEPSEEK V4 CoT</span></div>
+    <div class="stat-row"><span class="label">SANDBOX</span><span class="val green">WORKER THREAD</span></div>
+    <div class="stat-row"><span class="label">SESSION DB</span><span class="val green">SQLITE FTS5</span></div>
     <div class="stat-row"><span class="label">FALLBACK</span><span class="val">LOCAL QWEN</span></div>
-    <div class="stat-row"><span class="label">RAG MODE</span><span class="val" id="telem-rag">BM25 HYBRID</span></div>
+    <div class="stat-row"><span class="label">RAG MODE</span><span class="val" id="telem-rag">BM25 + SQLITE</span></div>
   </div>
 
   <!-- BOTTOM BAR -->
@@ -922,10 +987,44 @@ if (voiceLangSelect) {
   voiceLangSelect.value = currentVoiceLang;
 }
 
-function appendChat(role, text) {
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function appendChat(role, text, extras = {}) {
   const div = document.createElement("div");
   div.className = `chat-row ${role}`;
-  div.innerHTML = text;
+  
+  let html = text;
+
+  // Add Reasoning Trace (DeepSeek Chain-of-Thought)
+  if (extras.reasoning) {
+    html += `
+      <details class="reasoning-trace">
+        <summary>🧠 NEURAL REASONING TRACE (CLICK TO EXPAND)</summary>
+        <pre>${escapeHtml(extras.reasoning)}</pre>
+      </details>
+    `;
+  }
+
+  // Add Executed Tool Chips
+  if (extras.executedTools && Array.isArray(extras.executedTools) && extras.executedTools.length > 0) {
+    const chips = extras.executedTools.map(t => `<span class="tool-chip">⚡ ${escapeHtml(t.name)}</span>`).join(" ");
+    html += `<div class="tool-badge-row">${chips}</div>`;
+  }
+
+  // Add Model Engine Chip
+  if (extras.modelUsed) {
+    html += `<div class="model-chip">◈ ENGINE: ${escapeHtml(extras.modelUsed)}</div>`;
+  }
+
+  div.innerHTML = html;
   chatScreen.appendChild(div);
   chatScreen.scrollTop = chatScreen.scrollHeight;
 }
@@ -1218,8 +1317,18 @@ async function sendMessage(overrideText = null, fromVoice = false) {
     const data = await res.json();
     chatScreen.removeChild(thinkDiv);
     const reply = data.reply || "System operational, Boss.";
-    appendChat("ultron", reply);
+    appendChat("ultron", reply, {
+      reasoning: data.reasoning,
+      executedTools: data.executedTools,
+      modelUsed: data.modelUsed
+    });
     convHistory.push({ role: "assistant", content: reply });
+
+    // Live update telemetry provider
+    if (data.modelUsed) {
+      const telemProv = document.getElementById("telem-provider");
+      if (telemProv) telemProv.textContent = data.modelUsed.toUpperCase();
+    }
 
     if (fromVoice || isMicListening) {
       speakUltronReply(reply);

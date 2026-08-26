@@ -17,12 +17,14 @@ const fs = require("fs");
 const os = require("os");
 const cors = require("cors");
 const { execSync } = require("child_process");
-const { callUniversalLLM, callGemini, detectProvider } = require("./llm-providers");
+const { callUniversalLLM, detectProvider } = require("./llm-providers");
 const { runAgent } = require("./autonomous-loop-agent-v7-free");
 const skillEngine = require("./unified-skill-engine");
 const ragMemory = require("./rag-memory");
 const watchdog = require("./self-healing-watchdog");
 const airllmOptimizer = require("./airllm-optimizer");
+const { runSandboxedCode } = require("./code-sandbox");
+const { sessionStore } = require("./session-store");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -30,6 +32,12 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json({ limit: "50mb" })); // Support high-res images
 app.use(express.static(path.join(__dirname, "public")));
+
+// Ensure spill output directory exists
+const SPILL_DIR = path.join(__dirname, "agent-memory", ".spill");
+if (!fs.existsSync(SPILL_DIR)) {
+  try { fs.mkdirSync(SPILL_DIR, { recursive: true }); } catch (_) {}
+}
 
 // ---------------------------------------------------------------------------
 // 1. TOOL DEFINITIONS FOR SINGLE-TURN CHAT EXECUTION
@@ -60,13 +68,24 @@ const CHAT_TOOLS = [
   },
   {
     name: "run_command",
-    description: "Execute a shell or PowerShell command on the host system safely.",
+    description: "Execute a shell or PowerShell command on the host system safely with UTF-8 support.",
     input_schema: {
       type: "OBJECT",
       properties: {
         command: { type: "STRING", description: "The exact shell command to run." }
       },
       required: ["command"]
+    }
+  },
+  {
+    name: "run_code",
+    description: "Execute sandboxed JavaScript/Node.js code in an isolated Worker thread. Has tools.readFile(), tools.writeFile(), tools.runCommand(), tools.listDirectory() available.",
+    input_schema: {
+      type: "OBJECT",
+      properties: {
+        code: { type: "STRING", description: "JavaScript code to execute in the worker sandbox." }
+      },
+      required: ["code"]
     }
   },
   {
@@ -89,10 +108,21 @@ const CHAT_TOOLS = [
       },
       required: ["query"]
     }
+  },
+  {
+    name: "search_session_memory",
+    description: "Search across previous conversation dialogues, reasoning traces, and tool results using FTS5 SQLite.",
+    input_schema: {
+      type: "OBJECT",
+      properties: {
+        query: { type: "STRING", description: "Keywords or topic to search from past conversations." }
+      },
+      required: ["query"]
+    }
   }
 ];
 
-function executeLocalTool(name, input) {
+async function executeLocalTool(name, input) {
   const root = __dirname;
   switch (name) {
     case "read_file": {
@@ -126,11 +156,37 @@ function executeLocalTool(name, input) {
         return "Error: Command rejected by safety guardrails.";
       }
       try {
-        const out = execSync(cmd, { cwd: root, timeout: 20000, stdio: "pipe" });
-        return out.toString("utf-8").slice(0, 8000) || "Command completed with no output.";
+        const isWin = process.platform === "win32";
+        const cleanCmd = isWin ? `chcp 65001 >nul 2>&1 & ${cmd}` : cmd;
+        const out = execSync(cleanCmd, { cwd: root, timeout: 25000, stdio: "pipe", encoding: "utf-8" });
+        const rawOutput = out ? out.trim() : "";
+
+        // Output Spill-to-Disk for large outputs (>8000 chars)
+        if (rawOutput.length > 8000) {
+          const spillFileName = `exec_${Date.now()}.log`;
+          const spillFilePath = path.join(SPILL_DIR, spillFileName);
+          try { fs.writeFileSync(spillFilePath, rawOutput, "utf-8"); } catch (_) {}
+          const head = rawOutput.slice(0, 4000);
+          const tail = rawOutput.slice(-1500);
+          return `${head}\n\n[... 🗜️ SPILL-TO-DISK: Output exceeded 8KB. Full log saved at agent-memory/.spill/${spillFileName} ...]\n\n${tail}`;
+        }
+        return rawOutput || "Command completed with no output.";
       } catch (err) {
         return `Command error: ${err.stderr ? err.stderr.toString() : err.message}`;
       }
+    }
+
+    case "run_code": {
+      const code = input.code || "";
+      console.log("⚡ [SANDBOX WORKER] Executing dynamic code program...");
+      const res = await runSandboxedCode(code, { cwd: root, timeoutMs: 30000 });
+      let outputText = `=== CODE SANDBOX EXECUTION ===\nStatus: ${res.success ? "SUCCESS" : "FAILED"}\nDuration: ${res.durationMs}ms\n`;
+      if (res.logs) outputText += `Logs:\n${res.logs}\n`;
+      if (res.result !== null && res.result !== undefined) {
+        outputText += `Returned Result:\n${typeof res.result === "object" ? JSON.stringify(res.result, null, 2) : String(res.result)}\n`;
+      }
+      if (res.error) outputText += `Error:\n${res.error}\n`;
+      return outputText;
     }
 
     case "list_directory": {
@@ -157,6 +213,13 @@ function executeLocalTool(name, input) {
       if (byox.length > 0) result += `\n[Build-Your-Own Blueprint]: ${byox.map(b => b.target).join(", ")}`;
       if (mems.length > 0) result += `\n[AgentDB Memory]: ${mems.map(m => m.topic).join(", ")}`;
       return result;
+    }
+
+    case "search_session_memory": {
+      const q = input.query || "";
+      const results = sessionStore.search(q, 5);
+      if (results.length === 0) return `No past conversation memory found matching "${q}".`;
+      return results.map((r, i) => `[MEMORY ${i+1}] (${r.role}): ${r.snippet}`).join("\n\n");
     }
 
     default:
@@ -211,8 +274,8 @@ app.post("/api/ultron/chat", async (req, res) => {
     const enrichedPrompt = skillEngine.buildEnrichedSystemPrompt(message || "visual analysis", getBaseUltronPrompt());
     const matchedSkills = skillEngine.routeTask(message || "visual analysis", 3);
 
-    // Initial LLM Call with Tool Declarations
-    let llmRes = await callGemini(messages, enrichedPrompt, CHAT_TOOLS, "fast");
+    // Initial LLM Call with Tool Declarations via Tri-Engine Cascade (DeepSeek/Gemini/Ollama)
+    let llmRes = await callUniversalLLM(messages, enrichedPrompt, CHAT_TOOLS);
     let blocks = llmRes.content || [];
 
     // Check if Model requested tool execution
@@ -223,7 +286,7 @@ app.post("/api/ultron/chat", async (req, res) => {
       let toolOutputsText = "";
       for (const toolCall of toolCalls) {
         console.log(`⚡ [CHAT TOOL USE] Executing ${toolCall.name}:`, toolCall.input);
-        const toolOutput = executeLocalTool(toolCall.name, toolCall.input);
+        const toolOutput = await executeLocalTool(toolCall.name, toolCall.input);
         executedToolsList.push({ name: toolCall.name, input: toolCall.input, output: toolOutput });
         toolOutputsText += `\n\n[TOOL EXECUTED: ${toolCall.name}]\n[TOOL OUTPUT]:\n${toolOutput}`;
       }
@@ -234,7 +297,7 @@ app.post("/api/ultron/chat", async (req, res) => {
       });
 
       // Follow-up LLM Call with tool results
-      llmRes = await callGemini(messages, enrichedPrompt, null, "fast");
+      llmRes = await callUniversalLLM(messages, enrichedPrompt, null);
       blocks = llmRes.content || [];
     }
 
@@ -247,11 +310,28 @@ app.post("/api/ultron/chat", async (req, res) => {
 
     const wantsChat = /(chat|ચેટ|લખીને|console|terminal)/i.test(message || "");
 
+    // Persist turn in SQLite session store & FTS5
+    try {
+      const sid = req.body.sessionId || "ultron_live_session";
+      sessionStore.logEvent(sid, {
+        role: "user",
+        content: message || "[Image Analysis Request]"
+      });
+      sessionStore.logEvent(sid, {
+        role: "assistant",
+        content: reply,
+        reasoning: llmRes.reasoning || null,
+        tool_calls: executedToolsList.length > 0 ? executedToolsList : null,
+        usage: llmRes.usage
+      });
+    } catch (_) {}
+
     res.json({
       reply,
+      reasoning: llmRes.reasoning || null,
       wantsChat,
       provider: detectProvider(),
-      modelUsed: llmRes.modelUsed || "gemini-cascade",
+      modelUsed: llmRes.modelUsed || "cascade",
       matchedSkills: matchedSkills.map(s => ({ name: s.name, category: s.category, source: s.package_source })),
       executedTools: executedToolsList,
       usage: llmRes.usage
@@ -262,6 +342,29 @@ app.post("/api/ultron/chat", async (req, res) => {
       reply: `Boss, I encountered a brief neural channel delay: ${err.message}. Standing by.`,
       error: err.message
     });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 2.5 MEMORY & SESSION SEARCH REST API (FTS5 + PERSISTENCE)
+// ---------------------------------------------------------------------------
+app.get("/api/ultron/memory/search", (req, res) => {
+  try {
+    const q = req.query.q || "";
+    if (!q.trim()) return res.json({ results: [] });
+    const results = sessionStore.search(q, 10);
+    res.json({ success: true, query: q, results });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/ultron/sessions", (req, res) => {
+  try {
+    const sessions = sessionStore.listSessions(20);
+    res.json({ success: true, sessions });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
