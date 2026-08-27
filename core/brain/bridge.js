@@ -97,8 +97,11 @@ async function sendToBrain(userText, options = {}) {
     return { reply, vision: ocrRes };
   }
 
-  // 3. RAG Memory Context Retrieval
+  // 3. RAG Memory Context Retrieval & Executive Plan Grounding
   const ragContext = await ragMemory.buildRagContext(text, 2);
+  const todoManager = require("../../todo-manager");
+  const { sessionStore } = require("../../session-store");
+  const todoPrompt = todoManager.getTodoContextPrompt("voice_session");
 
   // 4. Check Connectivity & Route LLM
   const online = await isOnline();
@@ -113,10 +116,11 @@ async function sendToBrain(userText, options = {}) {
 Address the user as "Boss" in every reply.
 Match language (Gujarati / English / Hindi).
 Be concise, intelligent, and decisive.
-${ragContext ? `\nMemory context:\n${ragContext}` : ""}`;
+${ragContext ? `\nMemory context:\n${ragContext}` : ""}
+${todoPrompt}`;
 
       const messages = [{ role: "user", content: text }];
-      const llmRes = await callGemini(messages, systemPrompt, null, "fast");
+      const llmRes = await callUniversalLLM(messages, systemPrompt, null);
       const blocks = llmRes.content || [];
       const textBlock = blocks.find(b => b.type === "text");
       reply = textBlock ? textBlock.text : "Yes Boss, command received.";
@@ -135,8 +139,10 @@ ${ragContext ? `\nMemory context:\n${ragContext}` : ""}`;
     await speak(reply);
   }
 
-  // 6. Store turn into RAG conversation memory
+  // 6. Store turn into SQLite Session Store & RAG memory
   try {
+    sessionStore.logEvent("voice_session", { role: "user", content: text });
+    sessionStore.logEvent("voice_session", { role: "assistant", content: reply });
     ragMemory.rememberConversationTurn(`Boss: ${text}\nUltron: ${reply}`);
   } catch (_) {}
 

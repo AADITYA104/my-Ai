@@ -69,8 +69,22 @@ class SessionStore {
           FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS session_todos (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          task TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending',
+          note TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+        );
+
         CREATE INDEX IF NOT EXISTS idx_session_events_lookup 
         ON session_events(session_id, seq);
+
+        CREATE INDEX IF NOT EXISTS idx_session_todos_lookup 
+        ON session_todos(session_id, status);
       `);
 
       // Initialize FTS5 Virtual Table for full-text semantic search
@@ -250,6 +264,85 @@ class SessionStore {
       return { repaired: false };
     } catch (err) {
       return { repaired: false, error: err.message };
+    }
+  }
+
+  /**
+   * Save or overwrite active checklist for a session
+   */
+  saveTodos(sessionId, todos = []) {
+    if (!this.db) return [];
+    try {
+      this.ensureSession(sessionId);
+      const now = new Date().toISOString();
+      
+      const insertOrUpdate = this.db.prepare(`
+        INSERT INTO session_todos (id, session_id, task, status, note, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          task = excluded.task,
+          status = excluded.status,
+          note = excluded.note,
+          updated_at = excluded.updated_at
+      `);
+
+      const tx = this.db.transaction((items) => {
+        for (const t of items) {
+          const tId = t.id || `todo_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+          insertOrUpdate.run(
+            tId,
+            sessionId,
+            t.task || t.title || "Untitled Task",
+            t.status || "pending",
+            t.note || null,
+            t.created_at || now,
+            now
+          );
+        }
+      });
+
+      tx(todos);
+      return this.getTodos(sessionId);
+    } catch (err) {
+      console.warn("[SESSION STORE] saveTodos error:", err.message);
+      return [];
+    }
+  }
+
+  /**
+   * Get all active and completed todos for a session
+   */
+  getTodos(sessionId) {
+    if (!this.db) return [];
+    try {
+      return this.db.prepare(`
+        SELECT id, task, status, note, created_at, updated_at
+        FROM session_todos
+        WHERE session_id = ?
+        ORDER BY created_at ASC
+      `).all(sessionId);
+    } catch (err) {
+      console.warn("[SESSION STORE] getTodos error:", err.message);
+      return [];
+    }
+  }
+
+  /**
+   * Update status of an individual todo item
+   */
+  updateTodo(sessionId, todoId, status, note = null) {
+    if (!this.db) return false;
+    try {
+      const now = new Date().toISOString();
+      const res = this.db.prepare(`
+        UPDATE session_todos
+        SET status = ?, note = COALESCE(?, note), updated_at = ?
+        WHERE id = ? AND session_id = ?
+      `).run(status, note, now, todoId, sessionId);
+      return res.changes > 0;
+    } catch (err) {
+      console.warn("[SESSION STORE] updateTodo error:", err.message);
+      return false;
     }
   }
 
