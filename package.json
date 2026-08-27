@@ -2,9 +2,9 @@
     "name": "my-ai",
     "version": "7.0.0",
     "description": "Production-Grade Autonomous Loop Agent Suite: Actor-Critic, Distilled Skill Memory, RAG Vector Memory, Multi-Agent Collaboration, Session State Management, Native Tool Autonomy, Hardening, Telegram Gateway, and Cron Scheduler",
-    "main": "autonomous-loop-agent-v7-free.js",
+    "main": "ultron-server.js",
     "scripts": {
-        "start": "node autonomous-loop-agent-v7-free.js",
+        "start": "node ultron-server.js",
         "agent:reasoning": "node advanced-reasoning-agent.js",
         "agent:v1": "node autonomous-loop-agent.js",
         "agent:v2": "node autonomous-loop-agent-v2.js",

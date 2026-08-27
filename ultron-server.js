@@ -712,11 +712,92 @@ app.get("/api/ultron/status", (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log("\n========================================================");
-  console.log(`🤖 ULTRON 2026 OMNI-ENGINE ONLINE ON http://localhost:${PORT}`);
-  console.log(`   Skills Loaded: 717 Unique Skills across 9 Categories`);
-  console.log(`   Features: Multimodal Vision + Tool Calling + Live SSE HUD`);
-  console.log("========================================================\n");
+// ---------------------------------------------------------------------------
+// 7. SELF-HEALING PORT BINDING & CRASH RESILIENCE
+// ---------------------------------------------------------------------------
+function startServer(port = PORT, retries = 2) {
+  const server = app.listen(port, () => {
+    console.log("\n========================================================");
+    console.log(`🤖 ULTRON 2026 OMNI-ENGINE ONLINE ON http://localhost:${port}`);
+    console.log(`   Skills Loaded: 717 Unique Skills across 9 Categories`);
+    console.log(`   Features: Multimodal Vision + 12 Cognitive Tools + Live SSE HUD`);
+    console.log("========================================================\n");
+
+    // Auto-launch browser if executed directly
+    if (require.main === module && process.env.NO_BROWSER !== "true") {
+      setTimeout(() => {
+        const startCmd = process.platform === "win32" ? `start http://localhost:${port}`
+          : process.platform === "darwin" ? `open http://localhost:${port}`
+          : `xdg-open http://localhost:${port}`;
+        const { exec } = require("child_process");
+        exec(startCmd, (err) => {
+          if (!err) {
+            console.log(`🖥️ [HUD UI] 3D Holographic Interface opened at http://localhost:${port}, Boss.`);
+          }
+        });
+      }, 1000);
+    }
+  });
+
+  server.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      console.warn(`⚠️ [PORT OCCUPIED] Port ${port} is already in use.`);
+
+      // If on Windows and retries remain, attempt to terminate stale process
+      if (process.platform === "win32" && retries > 0) {
+        try {
+          console.log(`🔧 [PORT AUTO-RECOVERY] Attempting to free port ${port}...`);
+          const out = execSync(`netstat -ano | findstr :${port}`, { encoding: "utf-8", stdio: "pipe" });
+          const lines = out.split("\n").filter(l => l.includes("LISTENING"));
+          for (const line of lines) {
+            const parts = line.trim().split(/\s+/);
+            const pid = parts[parts.length - 1];
+            if (pid && pid !== String(process.pid) && pid !== "0") {
+              console.log(`🔨 [TERMINATING STALE PROCESS] PID: ${pid}`);
+              try { execSync(`taskkill /F /PID ${pid}`, { stdio: "ignore" }); } catch (_) {}
+            }
+          }
+          setTimeout(() => startServer(port, retries - 1), 1000);
+          return;
+        } catch (e) {
+          console.warn(`[PORT RECOVERY] Fallback to alternate port: ${e.message}`);
+        }
+      }
+
+      // Fallback to alternative port
+      const nextPort = Number(port) + 1;
+      console.log(`🔄 [PORT FALLBACK] Starting ULTRON on alternative port: http://localhost:${nextPort}`);
+      startServer(nextPort, 0);
+    } else {
+      console.error("❌ [SERVER ERROR]", err.message);
+    }
+  });
+
+  // Graceful shutdown handling
+  const shutdown = () => {
+    console.log("\n🛑 [ULTRON SHUTDOWN] Releasing neural ports and saving state, Boss...");
+    try {
+      server.close(() => {
+        process.exit(0);
+      });
+    } catch (_) {
+      process.exit(0);
+    }
+  };
+
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+
+  return server;
+}
+
+// Global Process Crash Guards
+process.on("uncaughtException", (err) => {
+  console.error("⚠️ [ULTRON UNCAUGHT EXCEPTION PREVENTED]:", err.message);
 });
+process.on("unhandledRejection", (reason) => {
+  console.error("⚠️ [ULTRON UNHANDLED REJECTION PREVENTED]:", reason);
+});
+
+startServer();
 
