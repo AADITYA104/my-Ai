@@ -124,6 +124,7 @@ const CHAT_TOOLS = [
       },
       required: ["query"]
     }
+  },
   {
     name: "edit_file_surgical",
     description: "Surgically view, replace exact strings, or insert lines into files with automatic syntax rollback without full-file rewrites.",
