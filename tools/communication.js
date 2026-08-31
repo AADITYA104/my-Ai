@@ -11,27 +11,33 @@ const telegramGateway = require("../telegram-gateway");
 
 class CommunicationSuite {
   /**
-   * Send a message to Telegram channel/user
+   * Send a message to Telegram channel/user via the REAL telegram-gateway
+   * bot instance. Previously this was a stub that always claimed success
+   * without sending anything — now it reports the actual outcome.
    */
-  async sendTelegramAlert(message) {
+  async sendTelegramAlert(message, chatId) {
     console.log(`📱 [COMMUNICATION] Sending Telegram alert: "${message}"`);
+    const result = await telegramGateway.sendMessage(message, chatId);
     return {
-      success: true,
+      success: result.success,
       channel: "Telegram",
-      message: `Boss, message dispatched via Telegram gateway.`
+      message: result.success ? "Boss, message dispatched via Telegram gateway." : `Boss, Telegram dispatch failed: ${result.error}`
     };
   }
 
   /**
-   * Dispatch a WhatsApp notification (via webhook / Twilio API)
+   * WhatsApp is NOT wired to any real provider (no Twilio/webhook config
+   * exists anywhere in this project) — honestly report that instead of a
+   * fake success, which would otherwise mislead the agent/user into
+   * believing a message went out when nothing happened.
    */
   async sendWhatsAppAlert(recipientNumber, message) {
-    console.log(`💬 [WHATSAPP] Dispatching to ${recipientNumber}: "${message}"`);
+    console.warn(`💬 [WHATSAPP] Not configured — no real provider is wired up. Would have sent to ${recipientNumber}: "${message}"`);
     return {
-      success: true,
+      success: false,
       channel: "WhatsApp",
       recipient: recipientNumber,
-      message: `Boss, WhatsApp notification sent.`
+      message: "Boss, WhatsApp is not configured yet — no message was actually sent. Wire up a Twilio/webhook provider in tools/communication.js to enable this."
     };
   }
 

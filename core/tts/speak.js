@@ -9,7 +9,7 @@
  */
 "use strict";
 
-const { exec, spawn } = require("child_process");
+const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
@@ -69,7 +69,7 @@ async function speak(text, options = {}) {
   // 2. Windows Native SAPI Speech (Zero-cost, Zero-latency default)
   if (process.platform === "win32") {
     try {
-      const escaped = cleanText.replace(/'/g, "''").replace(/"/g, '`"');
+      const escaped = cleanText.replace(/'/g, "''").replace(/"/g, '`"').replace(/\$/g, '`$').replace(/`(?!["$])/g, "``");
       const psCommand = `Add-Type -AssemblyName System.Speech; $speak = New-Object System.Speech.Synthesis.SpeechSynthesizer; $speak.Rate = 0; $speak.Speak("${escaped.slice(0, 500)}")`;
       currentAudioProcess = spawn("powershell", ["-NoProfile", "-Command", psCommand], { stdio: "ignore" });
       return;
@@ -78,17 +78,21 @@ async function speak(text, options = {}) {
     }
   }
 
-  // 3. Linux/macOS command fallback
+  // 3. Linux/macOS command fallback — spawn with an argument array (no shell),
+  // so TTS text can never be interpreted as shell syntax regardless of content.
   if (process.platform === "darwin") {
-    currentAudioProcess = exec(`say "${cleanText.replace(/"/g, '\\"')}"`);
+    currentAudioProcess = spawn("say", [cleanText], { stdio: "ignore" });
   }
 }
 
 function playAudioFile(filePath) {
   if (process.platform === "win32") {
-    currentAudioProcess = exec(`powershell -c "(New-Object Media.SoundPlayer '${filePath.replace(/\\/g, "/")}').PlaySync()"`);
+    currentAudioProcess = spawn("powershell", ["-NoProfile", "-Command", `(New-Object Media.SoundPlayer '${filePath.replace(/'/g, "''")}').PlaySync()`], { stdio: "ignore" });
   } else {
-    currentAudioProcess = exec(`mpv "${filePath}" || play "${filePath}"`);
+    currentAudioProcess = spawn("mpv", [filePath], { stdio: "ignore" });
+    currentAudioProcess.on("error", () => {
+      currentAudioProcess = spawn("play", [filePath], { stdio: "ignore" });
+    });
   }
 }
 

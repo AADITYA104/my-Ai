@@ -1,29 +1,31 @@
 {
     "name": "my-ai",
-    "version": "7.0.0",
-    "description": "Production-Grade Autonomous Loop Agent Suite: Actor-Critic, Distilled Skill Memory, RAG Vector Memory, Multi-Agent Collaboration, Session State Management, Native Tool Autonomy, Hardening, Telegram Gateway, and Cron Scheduler",
+    "version": "7.1.0",
+    "description": "ULTRON AI — Production-Grade Autonomous Loop Agent Suite with Brain Supercharge, DeepSeek V4, Tri-Engine Router, Multi-Agent Orchestration, RAG Memory, Session State, Telegram Gateway, Cron Scheduler, and Hunyuan3D Integration",
     "main": "ultron-server.js",
     "scripts": {
         "start": "node ultron-server.js",
         "agent:reasoning": "node advanced-reasoning-agent.js",
-        "agent:v1": "node autonomous-loop-agent.js",
-        "agent:v2": "node autonomous-loop-agent-v2.js",
-        "agent:v3": "node autonomous-loop-agent-v3.js",
-        "agent:v4": "node autonomous-loop-agent-v4-hardening.js",
-        "agent:v5": "node autonomous-loop-agent-v5-native-tools.js",
+        "agent:v7": "node autonomous-loop-agent-v7-free.js",
         "rag:ingest": "node rag-memory.js ingest",
         "rag:search": "node rag-memory.js search",
         "multi-agent": "node multi-agent-system.js",
         "session": "node session-manager.js",
-        "audit": "node autonomous-loop-agent-v4-hardening.js",
+        "audit": "node verify_blueprint_system.js",
         "gateway": "node telegram-gateway.js",
         "scheduler": "node cron-scheduler.js",
-        "agent:v6": "node autonomous-loop-agent-v6-gstack.js",
-        "agent:v7": "node autonomous-loop-agent-v7-free.js",
         "ultron": "node ultron.js",
         "ultron:server": "node ultron-server.js",
         "ultron:text": "node core/fallback/text-chat.js",
-        "ultron:service": "node service/autostart-config.js"
+        "ultron:service": "node service/autostart-config.js",
+        "ponytail:mcp": "node ponytail-mcp/index.js",
+        "electron": "electron electron-main.js",
+        "health-check": "node health-check-local.js",
+        "postinstall": "node scripts/install-mcp-servers.js",
+        "test": "node tests/deep_file_audit.js",
+        "test:accuracy": "node tests/accuracy-eval.test.js",
+        "report:metrics": "node scripts/metrics-report.js",
+        "check:budget": "node scripts/metrics-report.js --alert"
     },
     "keywords": [
         "ai",
@@ -53,5 +55,8 @@
         "node-telegram-bot-api": "^0.66.0",
         "pdf-parse": "^1.1.1",
         "playwright": "^1.49.1"
+    },
+    "devDependencies": {
+        "electron": "^33.0.0"
     }
 }

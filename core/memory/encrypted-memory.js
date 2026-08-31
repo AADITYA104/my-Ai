@@ -19,10 +19,31 @@ class EncryptedMemory {
   }
 
   /**
-   * Derive a 256-bit encryption key from machine ID / secret
+   * Derive a 256-bit encryption key from an operator-supplied secret.
+   * SECURITY: no hardcoded fallback. A fallback key baked into public
+   * source code means anyone who reads this file can decrypt every
+   * "encrypted" vault created without MEMORY_ENCRYPTION_KEY set. If unset,
+   * generate a random local key ONCE and persist it outside the repo
+   * (agent-memory is gitignored) — never fall back to a fixed string.
    */
   deriveMasterKey() {
-    const rawSecret = process.env.MEMORY_ENCRYPTION_KEY || "ULTRON-SOVEREIGN-KEY-2026";
+    let rawSecret = process.env.MEMORY_ENCRYPTION_KEY;
+    if (!rawSecret) {
+      const keyFile = path.join(this.storageDir, ".local_key");
+      try {
+        if (fs.existsSync(keyFile)) {
+          rawSecret = fs.readFileSync(keyFile, "utf-8").trim();
+        } else {
+          rawSecret = crypto.randomBytes(32).toString("hex");
+          fs.mkdirSync(this.storageDir, { recursive: true });
+          fs.writeFileSync(keyFile, rawSecret, { mode: 0o600 });
+          console.warn("⚠️ [ENCRYPTED MEMORY] MEMORY_ENCRYPTION_KEY not set — generated a random local key at agent-memory/.local_key. Set MEMORY_ENCRYPTION_KEY in .env for a key that survives a fresh clone/reinstall.");
+        }
+      } catch (err) {
+        console.error(`[ENCRYPTED MEMORY] Could not persist local key (${err.message}) — using a session-only random key; data will be unreadable after restart.`);
+        rawSecret = crypto.randomBytes(32).toString("hex");
+      }
+    }
     return crypto.createHash("sha256").update(rawSecret).digest();
   }
 

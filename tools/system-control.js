@@ -8,7 +8,7 @@
  */
 "use strict";
 
-const { execSync, exec } = require("child_process");
+const { execSync, execFile } = require("child_process");
 const os = require("os");
 const watchdog = require("../self-healing-watchdog");
 
@@ -62,11 +62,15 @@ class SystemControl {
   }
 
   /**
-   * Open or launch an application safely
+   * Open or launch an application safely.
+   * SECURITY: restricted to a fixed allowlist and launched via execFile
+   * (argument array, no shell) instead of exec() with a string-interpolated
+   * command — a denylist of 3 characters is fragile; an allowlist plus no
+   * shell interpretation closes the injection surface entirely.
    */
   openApp(appName) {
     if (!appName) return { success: false, error: "No app specified" };
-    const sanitized = appName.replace(/["`$]/g, "").trim();
+    const key = String(appName).replace(/[^a-z0-9]/gi, "").toLowerCase();
 
     const appAliases = {
       chrome: "chrome",
@@ -81,15 +85,18 @@ class SystemControl {
       explorer: "explorer"
     };
 
-    const target = appAliases[sanitized.toLowerCase()] || sanitized;
+    const target = appAliases[key];
+    if (!target) {
+      return { success: false, error: `"${appName}" is not on the allowed app list. Allowed: ${Object.keys(appAliases).join(", ")}.` };
+    }
 
     try {
       if (this.platform === "win32") {
-        exec(`start "" "${target}"`);
+        execFile("cmd.exe", ["/c", "start", "", target]);
       } else if (this.platform === "darwin") {
-        exec(`open -a "${target}"`);
+        execFile("open", ["-a", target]);
       } else {
-        exec(`xdg-open "${target}"`);
+        execFile("xdg-open", [target]);
       }
       return { success: true, message: `Opened application: ${target}` };
     } catch (err) {

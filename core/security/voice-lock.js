@@ -7,7 +7,7 @@
  */
 "use strict";
 
-const { execSync } = require("child_process");
+const { execFileSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
@@ -34,8 +34,10 @@ async function authorizeCommand(audioFilePath) {
   }
 
   try {
-    const cmd = `python "${VERIFY_SCRIPT}" "${audioFilePath}"`;
-    const result = execSync(cmd, { encoding: "utf-8", timeout: 8000 });
+    // SECURITY: execFileSync with an argument array — never build a shell
+    // string with execSync(`... "${audioFilePath}"`), since a filename
+    // containing shell metacharacters would otherwise be command injection.
+    const result = execFileSync("python", [VERIFY_SCRIPT, audioFilePath], { encoding: "utf-8", timeout: 8000 });
     const isMatch = result.includes("MATCH");
 
     if (!isMatch) {
@@ -45,8 +47,12 @@ async function authorizeCommand(audioFilePath) {
 
     return { authorized: true, reason: "Voice fingerprint verified." };
   } catch (err) {
-    console.warn(`[VOICE LOCK WARNING] Voice verification error: ${err.message}. Defaulting to safe pass.`);
-    return { authorized: true, reason: "Fallback verification" };
+    // SECURITY: fail CLOSED under strict mode. The entire point of
+    // VOICE_LOCK_STRICT=true is to reject anyone who isn't verified —
+    // silently authorizing on a script crash/timeout/missing Python would
+    // let an attacker bypass the lock just by making verification fail.
+    console.warn(`🚨 [VOICE LOCK] Verification error: ${err.message}. Failing CLOSED (strict mode).`);
+    return { authorized: false, reason: `Voice verification unavailable (${err.message}) — rejecting for safety under strict mode.` };
   }
 }
 

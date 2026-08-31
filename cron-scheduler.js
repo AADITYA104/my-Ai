@@ -97,6 +97,19 @@ const SCHEDULE = [
   },
 ];
 
+// [EVOLUTION ENGINE] Direct-call job (not routed through the generic
+// runAgent(goal) loop, since this is a fixed, self-contained maintenance
+// task — calling it directly is faster and doesn't burn a goal-decomposition
+// pass on something with only one real step).
+const DIRECT_JOBS = [
+  {
+    name: "daily-evolution-reflection",
+    cronExpr: "0 23 * * *", // every day at 11:00 PM
+    run: () => require("./evolution-engine").runDailyReflection(),
+    enabled: true,
+  },
+];
+
 function logRun(jobName, result, error) {
   fs.mkdirSync(MEMORY_DIR, { recursive: true });
   const entry = {
@@ -148,6 +161,22 @@ async function runScheduledJob(job) {
   }
 }
 
+async function runScheduledDirectJob(job) {
+  if (!acquireLock(job.name)) return;
+  await report(`⏰ [${job.name}] Starting scheduled run...`);
+  try {
+    const result = await job.run();
+    logRun(job.name, { success: true, result: String(result).slice(0, 500) }, null);
+    await report(`✅ [${job.name}] Completed.`);
+  } catch (error) {
+    logRun(job.name, null, error);
+    pushToDeadLetterQueue(job.name, job.name, error);
+    await report(`❌ [${job.name}] Failed with error: ${error.message}`);
+  } finally {
+    releaseLock();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 5. REGISTER CRON JOBS (Only when executed as main service)
 // ---------------------------------------------------------------------------
@@ -155,6 +184,12 @@ function initCronScheduler() {
   SCHEDULE.filter((j) => j.enabled).forEach((job) => {
     cron.schedule(job.cronExpr, () => {
       runScheduledJob(job);
+    });
+    console.log(`⏱️ Registered cron job '${job.name}' [${job.cronExpr}]`);
+  });
+  DIRECT_JOBS.filter((j) => j.enabled).forEach((job) => {
+    cron.schedule(job.cronExpr, () => {
+      runScheduledDirectJob(job);
     });
     console.log(`⏱️ Registered cron job '${job.name}' [${job.cronExpr}]`);
   });

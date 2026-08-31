@@ -11,7 +11,11 @@ const readline = require("readline");
 const path = require("path");
 const { clearStopFlag, isStopped } = require("../security/full-stop");
 
-const DEFAULT_PASSWORD = process.env.TEXT_CHAT_PASSWORD || "I LOVE YOU";
+// SECURITY: no hardcoded fallback/bypass password. A universal bypass
+// baked into public source code ("ULTRON-2026") defeats the entire point
+// of a password gate — anyone who reads this file on GitHub has it. You
+// MUST set TEXT_CHAT_PASSWORD in .env before this fallback interface works.
+const CONFIGURED_PASSWORD = process.env.TEXT_CHAT_PASSWORD || "";
 
 function startTextChat(bridgeCallback = null) {
   const rl = readline.createInterface({
@@ -23,10 +27,14 @@ function startTextChat(bridgeCallback = null) {
   console.log("🔒 ULTRON SECURE TEXT INTERFACE — PASSWORD REQUIRED");
   console.log("========================================================");
 
-  let authenticated = false;
+  if (!CONFIGURED_PASSWORD) {
+    console.log("❌ [MISCONFIGURED] TEXT_CHAT_PASSWORD is not set in .env. Refusing to start an unauthenticated fallback shell.");
+    rl.close();
+    return;
+  }
 
   rl.question("Enter Access Key / Password: ", async (input) => {
-    if (input.trim() === DEFAULT_PASSWORD || input.trim() === "ULTRON-2026") {
+    if (input.trim() === CONFIGURED_PASSWORD) {
       authenticated = true;
       clearStopFlag();
       console.log("\n✅ [ACCESS GRANTED] Ultron Neural Core Online. Enter commands below (type 'exit' to quit):\n");
@@ -42,6 +50,15 @@ function startTextChat(bridgeCallback = null) {
         if (text.toLowerCase() === "exit" || text.toLowerCase() === "quit") {
           console.log("Shutting down text terminal session.");
           rl.close();
+          return;
+        }
+
+        // [PONYTAIL MODE] Handle mode-switch commands locally, same as the HTTP chat endpoint.
+        const ponytailModeCmd = require("../../ponytail-mode").parseModeCommand(text);
+        if (ponytailModeCmd) {
+          const applied = require("../../ponytail-mode").setMode(ponytailModeCmd);
+          console.log(`ULTRON ▸ ${applied === "off" ? "Ponytail mode is off. Back to normal." : `Ponytail mode switched to ${applied}.`}\n`);
+          rl.prompt();
           return;
         }
 
@@ -72,6 +89,5 @@ if (require.main === module) {
 }
 
 module.exports = {
-  startTextChat,
-  DEFAULT_PASSWORD
+  startTextChat
 };

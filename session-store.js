@@ -70,13 +70,14 @@ class SessionStore {
         );
 
         CREATE TABLE IF NOT EXISTS session_todos (
-          id TEXT PRIMARY KEY,
+          id TEXT NOT NULL,
           session_id TEXT NOT NULL,
           task TEXT NOT NULL,
           status TEXT NOT NULL DEFAULT 'pending',
           note TEXT,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
+          PRIMARY KEY (session_id, id),
           FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
         );
 
@@ -279,7 +280,7 @@ class SessionStore {
       const insertOrUpdate = this.db.prepare(`
         INSERT INTO session_todos (id, session_id, task, status, note, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
+        ON CONFLICT(session_id, id) DO UPDATE SET
           task = excluded.task,
           status = excluded.status,
           note = excluded.note,

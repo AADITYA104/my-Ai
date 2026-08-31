@@ -215,5 +215,24 @@ if (bot) {
 module.exports = {
   isGatewayActive: () => !!bot,
   getSession,
-  checkRateLimit
+  checkRateLimit,
+  /**
+   * Actually send a message via the real Telegram bot instance, to a given
+   * chat (defaults to REPORT_CHAT_ID from .env). Returns a real
+   * success/failure result instead of a hardcoded stub.
+   */
+  async sendMessage(text, chatId = process.env.REPORT_CHAT_ID) {
+    if (!bot) {
+      return { success: false, error: "Telegram bot is not active (set TELEGRAM_BOT_TOKEN and START_TELEGRAM_BOT=true, or run telegram-gateway.js directly)." };
+    }
+    if (!chatId) {
+      return { success: false, error: "No chat id provided and REPORT_CHAT_ID is not set in .env." };
+    }
+    try {
+      await bot.sendMessage(chatId, text);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
 };

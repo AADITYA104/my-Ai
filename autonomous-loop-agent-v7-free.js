@@ -20,6 +20,46 @@ const readline = require("readline");
 const { callUniversalLLM, callGemini, callOllama, detectProvider } = require("./llm-providers");
 const watchdog = require("./self-healing-watchdog");
 
+// Self-learning loop (RETRIEVE -> JUDGE -> DISTILL -> CONSOLIDATE)
+let intelligenceLoop = { learnFromOutcome: () => {} };
+try { intelligenceLoop = require("./intelligence-loop"); } catch (_) {}
+
+// AI Defence (prompt-injection / PII / loader-hijack guards)
+let aidefence = { scanCommandForEnvHijack: () => ({ safe: true, violations: [] }) };
+try { aidefence = require("./ai-defence"); } catch (_) {}
+
+// Ruflo MCP bridge — real ruflo tools (agent/swarm/memory/hooks), optional
+let rufloBridge = { isConfigured: () => false, listTools: async () => [], callTool: async () => { throw new Error("not configured"); } };
+try { rufloBridge = require("./ruflo-bridge"); } catch (_) {}
+
+// Generic multi-MCP bridge — auto-registers bundled servers (sequentialthinking, memory, ponytail)
+let mcpBridge = { isConfigured: () => false, callTool: async () => { throw new Error("not configured"); } };
+try { mcpBridge = require("./mcp-bridge"); } catch (_) {}
+
+// [9/10] Tool-call rate limiter — protects against runaway tool-calling loops
+const { ToolRateLimiter } = require("./tool-rate-limiter");
+const toolRateLimiter = new ToolRateLimiter({ perToolCapacity: 15, perToolRefillPerSecond: 1, globalCapacity: 40, globalRefillPerSecond: 3 });
+
+// [7/10] Tool argument schema validator — set up after TOOL_DEFINITIONS below
+
+// Corrective RAG — grades retrieved memory relevance before trusting it
+let correctiveRag = { gradeRelevance: async () => ({ verdict: "sufficient", guidance: "" }) };
+let ragModule = { search: () => [] };
+try {
+  correctiveRag = require("./corrective-rag");
+  ragModule = require("./rag-memory");
+} catch (_) {}
+
+// Scope creep detector — flags file writes that stray beyond task intent
+let scopeGuard = { checkScope: () => ({ inScope: true, flags: [] }) };
+try { scopeGuard = require("./scope-guard"); } catch (_) {}
+let currentTaskIntent = ""; // set at the top of each subtask, read by executeTool's write_file case
+let currentMatchedSkillTitle = null; // set at the top of each subtask, read by skill-improvement tracking
+
+// Skill improvement tracker — records whether a matched skill correlated with success
+let skillImprovement = { recordSkillOutcome: () => {} };
+try { skillImprovement = require("./skill-improvement"); } catch (_) {}
+
 // Optional RAG module
 let buildRagContext = async () => "";
 let rememberConversationTurn = async () => {};
@@ -53,6 +93,11 @@ const CONFIG = {
 };
 
 let tokensUsedSoFar  = 0;
+// [CONTEXT BUDGET] Proactive per-goal token tracking with early warnings
+// (70%/90% of MAX_TOKENS_TOTAL) — complements the existing hard cutoff at
+// 100% by surfacing the drift before it becomes a forced stop.
+const { ContextBudget } = require("./context-budget");
+let goalContextBudget = new ContextBudget(CONFIG.MAX_TOKENS_TOTAL);
 let noProgressStreak = 0;
 
 // Per-session canary token
@@ -179,6 +224,10 @@ function checkCommandSafety(command) {
   if (watchdog.isDestructiveCommand(command)) {
     return { warn: true, reason: "Command matched dangerous system pattern in deny-matrix." };
   }
+  const envCheck = aidefence.scanCommandForEnvHijack(command);
+  if (!envCheck.safe) {
+    return { warn: true, reason: `Command tries to set restricted env var(s): ${envCheck.violations.join(", ")} (loader-hijack risk).` };
+  }
   return { warn: false, reason: "Safe command" };
 }
 
@@ -203,6 +252,7 @@ async function callLLM(messages, system) {
   const usage = res.usage || {};
   const total = (usage.input_tokens || 0) + (usage.output_tokens || 0);
   tokensUsedSoFar += total;
+  goalContextBudget.record("callLLM", total);
   const textBlock = (res.content || []).find(b => b.type === "text");
   return { text: textBlock ? textBlock.text : "", duration, usage };
 }
@@ -214,6 +264,10 @@ async function callLLMWithTools(messages, system, tools) {
   const usage = res.usage || {};
   const total = (usage.input_tokens || 0) + (usage.output_tokens || 0);
   tokensUsedSoFar += total;
+  const budgetStatus = goalContextBudget.record("callLLMWithTools", total);
+  if (budgetStatus.level === "warning" || budgetStatus.level === "critical") {
+    console.log(`  [CONTEXT BUDGET] ${budgetStatus.level}: ${budgetStatus.pct}% used — ${budgetStatus.guidance}`);
+  }
   return { ...res, duration };
 }
 
@@ -224,8 +278,6 @@ function calculateTaskCost(totalTokens) {
   const pricingTable = {
     "ollama": { inputPerM: 0.0, outputPerM: 0.0, label: "Local Ollama (Free)" },
     "local": { inputPerM: 0.0, outputPerM: 0.0, label: "Local Engine (Free)" },
-    "deepseek-chat": { inputPerM: 0.14, outputPerM: 0.28, label: "DeepSeek V4 / Chat" },
-    "deepseek-reasoner": { inputPerM: 0.55, outputPerM: 2.19, label: "DeepSeek R1 / Reasoner" },
     "gemini-flash": { inputPerM: 0.075, outputPerM: 0.30, label: "Gemini 2.5/3.5 Flash" },
     "gemini-pro": { inputPerM: 1.25, outputPerM: 5.00, label: "Gemini Pro" },
     "claude-sonnet": { inputPerM: 3.00, outputPerM: 15.00, label: "Claude Sonnet" },
@@ -356,7 +408,53 @@ const TOOL_DEFINITIONS = [
     input_schema: { type: "object", properties: { language: { type: "string", enum: ["javascript","python"] }, code: { type: "string" } }, required: ["language","code"] } },
   { name: "calculator",    description: "Evaluates an arithmetic expression.",
     input_schema: { type: "object", properties: { expression: { type: "string" } }, required: ["expression"] } },
+  { name: "ruflo_tool",    description: "Calls a real ruflo MCP tool (333 available: agent_spawn, swarm_init, memory_store/search with real vector search, hooks_intelligence_*, config_*, etc.) — only works once RUFLO_MCP_PATH is set in .env pointing at a built ruflo v3/@claude-flow/cli/bin/mcp-server.js. Use ruflo_tool with tool_name='tools_list' (no args) first to see what's available.",
+    input_schema: { type: "object", properties: { tool_name: { type: "string" }, args: { type: "object" } }, required: ["tool_name"] } },
+  { name: "parallel_research", description: "Research multiple independent questions/topics concurrently instead of one at a time — use when a task has 2+ genuinely independent sub-questions to investigate (e.g. comparing options, gathering several unrelated facts).",
+    input_schema: { type: "object", properties: { topics: { type: "array" } }, required: ["topics"] } },
+  { name: "sequential_thinking", description: "Use for genuinely hard, multi-step problems where you need to reason step-by-step, revise earlier thoughts, or branch into alternative approaches before committing to an answer — NOT for simple/obvious tasks. Call repeatedly, one thought at a time, incrementing thoughtNumber, until nextThoughtNeeded is false.",
+    input_schema: { type: "object", properties: {
+      thought: { type: "string" }, thoughtNumber: { type: "number" }, totalThoughts: { type: "number" },
+      nextThoughtNeeded: { type: "boolean" }, isRevision: { type: "boolean" }, revisesThought: { type: "number" },
+      branchFromThought: { type: "number" }, branchId: { type: "string" }
+    }, required: ["thought", "thoughtNumber", "totalThoughts", "nextThoughtNeeded"] } },
+  { name: "hierarchical_crew", description: "Delegate a substantial, multi-faceted mission to a manager-led team (architect/researcher/coder/auditor) that dynamically decides the right order of steps based on progress — use for genuinely complex build/design missions, not simple single-step tasks.",
+    input_schema: { type: "object", properties: { mission: { type: "string" }, maxSteps: { type: "number" } }, required: ["mission"] } },
+  { name: "debate_group_chat", description: "Run a multi-turn conversation among architect/researcher/coder/auditor specialists who respond to EACH OTHER (not a fixed handoff) — best for genuinely contentious design decisions, tradeoff debates, or getting a design critiqued from multiple angles before committing. The auditor ends the discussion once satisfied.",
+    input_schema: { type: "object", properties: { topic: { type: "string" }, maxTurns: { type: "number" } }, required: ["topic"] } },
+  { name: "browser_open", description: "Open a browser session at a URL and return a numbered list of interactive elements (links, buttons, inputs) on the page. Use this instead of writing CSS selectors — act on elements by their number via browser_act.",
+    input_schema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] } },
+  { name: "browser_act", description: "Click, fill, or select a numbered element from the last browser_open/browser_act result (action: \"click\"|\"fill\"|\"select\"; for \"select\", value must be one of that element's listed options). Returns the refreshed element list after the action. Requires an open session (call browser_open first).",
+    input_schema: { type: "object", properties: { index: { type: "number" }, action: { type: "string" }, value: { type: "string" } }, required: ["index", "action"] } },
+  { name: "browser_scroll", description: "Scroll the current page up or down to reveal more content — many pages hide elements below the fold that won't appear in browser_open's initial element list until you scroll.",
+    input_schema: { type: "object", properties: { direction: { type: "string" }, amount: { type: "number" } } } },
+  { name: "browser_back", description: "Navigate back to the previous page in the current browser session's history.",
+    input_schema: { type: "object", properties: {} } },
+  { name: "browser_keys", description: "Send a keyboard key/shortcut to the page (e.g. \"Escape\" to dismiss a popup, \"Enter\" to submit, \"Control+A\" to select all) — for interactions click/fill can't express.",
+    input_schema: { type: "object", properties: { keys: { type: "string" } }, required: ["keys"] } },
+  { name: "browser_extract", description: "Extract the visible text content of the current page (or a specific CSS selector within it) for reading/summarizing — separate from the interactive-element list, which is for acting on elements not reading content.",
+    input_schema: { type: "object", properties: { selector: { type: "string" } } } },
+  { name: "browser_find_text", description: "Scroll directly to a piece of text on the page instead of scrolling blindly. Returns the refreshed element list once scrolled into view.",
+    input_schema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } },
+  { name: "browser_screenshot", description: "Take a screenshot of the current page and save it to disk. Use for visual verification (layout, charts, a CAPTCHA) that the text-based element list can't capture.",
+    input_schema: { type: "object", properties: { fileName: { type: "string" } } } },
+  { name: "browser_save_pdf", description: "Save the current page as a PDF file. Only works in headless Chromium.",
+    input_schema: { type: "object", properties: { fileName: { type: "string" } } } },
+  { name: "browser_list_tabs", description: "List all open tabs in the current browser session, showing which one is active.",
+    input_schema: { type: "object", properties: {} } },
+  { name: "browser_open_tab", description: "Open a new tab at a URL within the current browser session (keeps existing tabs open) and switch to it.",
+    input_schema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] } },
+  { name: "browser_switch_tab", description: "Switch the active tab to the given tabId (from browser_list_tabs).",
+    input_schema: { type: "object", properties: { tabId: { type: "number" } }, required: ["tabId"] } },
+  { name: "browser_close_tab", description: "Close the tab with the given tabId (from browser_list_tabs).",
+    input_schema: { type: "object", properties: { tabId: { type: "number" } }, required: ["tabId"] } },
+  { name: "browser_close", description: "Close the current browser session.",
+    input_schema: { type: "object", properties: {} } },
 ];
+
+// [7/10] Tool argument schema validator, built from the definitions above
+const { makeValidator } = require("./tool-validator");
+const validateToolCallArgs = makeValidator(TOOL_DEFINITIONS);
 
 function safeEvaluateArithmetic(expr) {
   if (!expr || typeof expr !== "string") return "0";
@@ -380,6 +478,21 @@ function safeEvaluateArithmetic(expr) {
 
 async function executeTool(toolName, args) {
   const t0 = Date.now();
+
+  // [RATE LIMITER] Guard against a runaway tool-calling loop (a confused
+  // agent calling the same/different tool dozens of times per second).
+  const rateCheck = toolRateLimiter.checkAndConsume(toolName);
+  if (!rateCheck.allowed) {
+    return `[RATE_LIMITED]: ${rateCheck.reason}`;
+  }
+
+  // [SCHEMA VALIDATION] Catch hallucinated/malformed tool arguments before
+  // execution instead of letting them fail deep inside the tool's own logic.
+  const validation = validateToolCallArgs(toolName, args);
+  if (!validation.valid) {
+    return `[VALIDATION_ERROR]: ${validation.errors.join(" ")}`;
+  }
+
   try {
     switch (toolName) {
       case "write_file": {
@@ -406,11 +519,20 @@ async function executeTool(toolName, args) {
         }
 
         const verifyMs = Date.now() - t0;
-        return `[SUCCESS & VERIFIED] Wrote and verified ${verifyContent.length} bytes to ${args.filePath} (${verifyMs}ms).`;
+        let note = "";
+        try {
+          const scopeCheck = scopeGuard.checkScope(currentTaskIntent, args.filePath, args.content);
+          if (!scopeCheck.inScope) {
+            note = ` [SCOPE NOTE: ${scopeCheck.flags.join(" ")}]`;
+            console.log(`  [SCOPE GUARD] ${scopeCheck.verdict}: ${scopeCheck.flags.join(" ")}`);
+          }
+        } catch (_) {}
+        return `[SUCCESS & VERIFIED] Wrote and verified ${verifyContent.length} bytes to ${args.filePath} (${verifyMs}ms).${note}`;
       }
       case "read_file": {
         const base = FREEZE_DIR ? FREEZE_DIR.slice(0, -1) : __dirname;
         const fullPath = path.resolve(base, args.filePath);
+        if (!isWithinFreezeDir(fullPath)) return `[BLOCKED] ${args.filePath} is outside FREEZE_DIR.`;
         if (!fs.existsSync(fullPath)) return `Error: File does not exist: ${args.filePath}`;
         let content = fs.readFileSync(fullPath, "utf-8");
         content = stripSurrogates(content);
@@ -447,6 +569,185 @@ async function executeTool(toolName, args) {
       }
       case "calculator":
         return safeEvaluateArithmetic(args.expression);
+      case "ruflo_tool": {
+        if (!rufloBridge.isConfigured()) {
+          return `[TOOL_ERROR]: Ruflo MCP bridge not configured. Set RUFLO_MCP_PATH in .env (see ruflo-bridge-setup.md) to use real ruflo tools.`;
+        }
+        try {
+          if (args.tool_name === "tools_list") {
+            const tools = await rufloBridge.listTools();
+            return JSON.stringify(tools.map(t => ({ name: t.name, description: t.description })));
+          }
+          const result = await rufloBridge.callTool(args.tool_name, args.args || {});
+          return JSON.stringify(result);
+        } catch (err) {
+          return `[TOOL_ERROR]: ruflo_tool "${args.tool_name}" failed: ${err.message}`;
+        }
+      }
+      case "parallel_research": {
+        try {
+          const { runParallelResearch } = require("./multi-agent-system");
+          const result = await runParallelResearch(args.topics, 3);
+          return JSON.stringify(result);
+        } catch (err) {
+          return `[TOOL_ERROR]: parallel_research failed: ${err.message}`;
+        }
+      }
+      case "sequential_thinking": {
+        try {
+          if (!mcpBridge.isConfigured("sequentialthinking")) {
+            return `[TOOL_ERROR]: sequentialthinking MCP server not built. Run "npm install && npm run build" in mcp-servers/sequentialthinking/.`;
+          }
+          const result = await mcpBridge.callTool("sequentialthinking", "sequentialthinking", args);
+          return JSON.stringify(result);
+        } catch (err) {
+          return `[TOOL_ERROR]: sequential_thinking failed: ${err.message}`;
+        }
+      }
+      case "hierarchical_crew": {
+        try {
+          const { runHierarchicalCrew } = require("./multi-agent-system");
+          const result = await runHierarchicalCrew(args.mission, args.maxSteps || 8);
+          return JSON.stringify({ mission: result.mission, stepsUsed: result.stepsUsed, steps: result.steps, finalResult: result.finalHandoff?.payload });
+        } catch (err) {
+          return `[TOOL_ERROR]: hierarchical_crew failed: ${err.message}`;
+        }
+      }
+      case "debate_group_chat": {
+        try {
+          const { runDebateGroupChat } = require("./multi-agent-system");
+          const result = await runDebateGroupChat(args.topic, args.maxTurns || 8);
+          return JSON.stringify({ topic: args.topic, stoppedReason: result.stoppedReason, transcript: result.messages });
+        } catch (err) {
+          return `[TOOL_ERROR]: debate_group_chat failed: ${err.message}`;
+        }
+      }
+      case "browser_open": {
+        try {
+          const browserAgent = require("./browser-agent");
+          const result = await browserAgent.openSession(args.url);
+          return JSON.stringify(result);
+        } catch (err) {
+          return `[TOOL_ERROR]: browser_open failed: ${err.message}`;
+        }
+      }
+      case "browser_act": {
+        try {
+          const browserAgent = require("./browser-agent");
+          const result = await browserAgent.actByIndex(args.index, args.action, args.value || "");
+          return JSON.stringify(result);
+        } catch (err) {
+          return `[TOOL_ERROR]: browser_act failed: ${err.message}`;
+        }
+      }
+      case "browser_scroll": {
+        try {
+          const browserAgent = require("./browser-agent");
+          const result = await browserAgent.scroll(args.direction || "down", args.amount || 600);
+          return JSON.stringify(result);
+        } catch (err) {
+          return `[TOOL_ERROR]: browser_scroll failed: ${err.message}`;
+        }
+      }
+      case "browser_back": {
+        try {
+          const browserAgent = require("./browser-agent");
+          const result = await browserAgent.goBack();
+          return JSON.stringify(result);
+        } catch (err) {
+          return `[TOOL_ERROR]: browser_back failed: ${err.message}`;
+        }
+      }
+      case "browser_keys": {
+        try {
+          const browserAgent = require("./browser-agent");
+          const result = await browserAgent.sendKeys(args.keys);
+          return JSON.stringify(result);
+        } catch (err) {
+          return `[TOOL_ERROR]: browser_keys failed: ${err.message}`;
+        }
+      }
+      case "browser_extract": {
+        try {
+          const browserAgent = require("./browser-agent");
+          const result = await browserAgent.extractContent(args.selector || null);
+          return JSON.stringify(result);
+        } catch (err) {
+          return `[TOOL_ERROR]: browser_extract failed: ${err.message}`;
+        }
+      }
+      case "browser_find_text": {
+        try {
+          const browserAgent = require("./browser-agent");
+          const result = await browserAgent.findText(args.text);
+          return JSON.stringify(result);
+        } catch (err) {
+          return `[TOOL_ERROR]: browser_find_text failed: ${err.message}`;
+        }
+      }
+      case "browser_screenshot": {
+        try {
+          const browserAgent = require("./browser-agent");
+          const result = await browserAgent.screenshot(args.fileName || null);
+          return JSON.stringify(result);
+        } catch (err) {
+          return `[TOOL_ERROR]: browser_screenshot failed: ${err.message}`;
+        }
+      }
+      case "browser_save_pdf": {
+        try {
+          const browserAgent = require("./browser-agent");
+          const result = await browserAgent.saveAsPDF(args.fileName || null);
+          return JSON.stringify(result);
+        } catch (err) {
+          return `[TOOL_ERROR]: browser_save_pdf failed: ${err.message}`;
+        }
+      }
+      case "browser_list_tabs": {
+        try {
+          const browserAgent = require("./browser-agent");
+          const result = await browserAgent.listTabs();
+          return JSON.stringify(result);
+        } catch (err) {
+          return `[TOOL_ERROR]: browser_list_tabs failed: ${err.message}`;
+        }
+      }
+      case "browser_open_tab": {
+        try {
+          const browserAgent = require("./browser-agent");
+          const result = await browserAgent.openTab(args.url);
+          return JSON.stringify(result);
+        } catch (err) {
+          return `[TOOL_ERROR]: browser_open_tab failed: ${err.message}`;
+        }
+      }
+      case "browser_switch_tab": {
+        try {
+          const browserAgent = require("./browser-agent");
+          const result = await browserAgent.switchTab(args.tabId);
+          return JSON.stringify(result);
+        } catch (err) {
+          return `[TOOL_ERROR]: browser_switch_tab failed: ${err.message}`;
+        }
+      }
+      case "browser_close_tab": {
+        try {
+          const browserAgent = require("./browser-agent");
+          const result = await browserAgent.closeTab(args.tabId);
+          return JSON.stringify(result);
+        } catch (err) {
+          return `[TOOL_ERROR]: browser_close_tab failed: ${err.message}`;
+        }
+      }
+      case "browser_close": {
+        try {
+          const browserAgent = require("./browser-agent");
+          await browserAgent.closeSession();
+          return "Browser session closed.";
+        } catch (err) {
+          return `[TOOL_ERROR]: browser_close failed: ${err.message}`;
+        }
+      }
       default:
         return `Unknown tool: ${toolName}`;
     }
@@ -634,8 +935,28 @@ async function runActorWithNativeTools(subtask, memoryContext, matchedSkill, rag
 // [10] SUBTASK RUNNER
 // ===========================================================================
 async function runSubtaskToCompletion(subtask, controlOptions, parentGoal = "") {
+  const outcome = await runSubtaskToCompletionInner(subtask, controlOptions, parentGoal);
+  // INTELLIGENCE LOOP (JUDGE -> DISTILL -> CONSOLIDATE): record what happened
+  // as a "lesson" in RAG memory so a similar future subtask retrieves it via
+  // the normal buildRagContext() call above. Never let learning break the
+  // actual task outcome.
+  try {
+    intelligenceLoop.learnFromOutcome(subtask.description, outcome.result || outcome.reason || "", outcome.success);
+  } catch (_) {}
+  // [SKILL IMPROVEMENT] Track whether the skill matched for this subtask
+  // (if any) correlated with success — surfaces underperforming skills for
+  // manual review over time via skillImprovement.getUnderperformingSkills().
+  try {
+    if (currentMatchedSkillTitle) skillImprovement.recordSkillOutcome(currentMatchedSkillTitle, outcome.success);
+  } catch (_) {}
+  return outcome;
+}
+
+async function runSubtaskToCompletionInner(subtask, controlOptions, parentGoal = "") {
   controlOptions = controlOptions || {};
+  currentTaskIntent = subtask.description || "";
   const matchedSkill = await findRelevantSkill(subtask.description);
+  currentMatchedSkillTitle = matchedSkill ? matchedSkill.title : null;
   if (matchedSkill) console.log(`  [SKILL MATCHED] ${matchedSkill.title}${matchedSkill.isStale ? " STALE" : ""}`);
   
   let ragContext = "";
@@ -643,7 +964,21 @@ async function runSubtaskToCompletion(subtask, controlOptions, parentGoal = "") 
     const tRag0 = Date.now();
     ragContext = await buildRagContext(subtask.description, 3);
     const ragTime = Date.now() - tRag0;
-    if (ragContext) console.log(`  [RAG MATCHED] Injected knowledge chunks (${ragTime}ms).`);
+    if (ragContext) {
+      console.log(`  [RAG MATCHED] Injected knowledge chunks (${ragTime}ms).`);
+      // [CORRECTIVE RAG] Grade whether the retrieved context is actually
+      // relevant before trusting it as ground truth — a naive RAG pipeline
+      // will confidently inject irrelevant context, which makes wrong
+      // answers MORE convincing, not less.
+      try {
+        const rawHits = ragModule.search(subtask.description, 5);
+        const grade = await correctiveRag.gradeRelevance(subtask.description, rawHits);
+        if (grade.verdict !== "sufficient") {
+          ragContext += `\n<rag_reliability_note>${grade.guidance}</rag_reliability_note>\n`;
+          console.log(`  [CORRECTIVE RAG] ${grade.verdict}: ${grade.guidance}`);
+        }
+      } catch (_) {}
+    }
   } catch (_) {}
 
   let attempts = 0, lastResult = null, failureLog = [], rcaContext = "";
@@ -713,6 +1048,7 @@ async function replanRemaining(goal, completedIds, failureReason) {
 async function runAgent(goal, controlOptions) {
   controlOptions = controlOptions || {};
   ensureDirs();
+  goalContextBudget.reset(); // fresh budget tracking per goal run
 
   if (!acquireWorkspaceLock(goal)) {
     return { success: false, reason: "Workspace lock busy" };

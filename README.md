@@ -1,11 +1,11 @@
 <div align="center">
 
 # 🤖 ULTRON // Sovereign Autonomous AI Core
-### *Enterprise-Grade Multi-Agent Omni-Engine & 717 Master Skills Registry*
+### *Enterprise-Grade Multi-Agent Omni-Engine & 858 Master Skills Registry*
 
 [![CI Build](https://img.shields.io/badge/CI-Passing%20(15%2F15)-brightgreen.svg?style=for-the-badge&logo=githubactions)](https://github.com/AADITYA104/my-Ai)
 [![Architecture](https://img.shields.io/badge/Architecture-2026%20Omni--Engine-cyan.svg?style=for-the-badge)](https://github.com/AADITYA104/my-Ai)
-[![Skills Registry](https://img.shields.io/badge/Skills-717%20Master%20Skills-blueviolet.svg?style=for-the-badge)](https://github.com/AADITYA104/my-Ai)
+[![Skills Registry](https://img.shields.io/badge/Skills-858%20Master%20Skills-blueviolet.svg?style=for-the-badge)](https://github.com/AADITYA104/my-Ai)
 [![Node Version](https://img.shields.io/badge/Node-20%2B-blue.svg?style=for-the-badge&logo=nodedotjs)](https://nodejs.org)
 [![License](https://img.shields.io/badge/License-MIT-orange.svg?style=for-the-badge)](LICENSE)
 
@@ -13,7 +13,7 @@
 
 **Ultron** is a production-hardened, multi-agent autonomous engineering system. It combines dual-engine cloud/local routing, AST-aware RAG vector search, self-healing rollback guardrails, and persistent multi-session continuity.
 
-[Features](#-key-capabilities) • [Architecture](#-system-architecture) • [Skills Registry](#-717-master-skills-catalog) • [Quick Start](#-quick-start) • [Verification & Testing](#-testing--reliability-gates)
+[Features](#-key-capabilities) • [Architecture](#-system-architecture) • [Skills Registry](#-858-master-skills-catalog) • [Quick Start](#-quick-start) • [Verification & Testing](#-testing--reliability-gates)
 
 </div>
 
@@ -83,20 +83,21 @@
 
 ---
 
-## 📊 717 Master Skills Catalog
+## 📊 858 Master Skills Catalog
 
-Ultron indexes **717 production skills** across 9 specialized categories:
+Ultron indexes **858 production skills** across 10 specialized categories:
 
 | Category | Skills Count | Focus Area |
 |---|:---:|---|
-| 🐝 **Multi-Agent Swarm** | **234** | Orchestration, handoffs, consensus, and multi-agent coordination. |
-| 🤖 **General Autonomous Ops** | **165** | System management, automation pipelines, and CLI controllers. |
-| 💻 **Coding & Architecture** | **143** | TypeScript, Python, C++, Rust, backend patterns, and system design. |
-| 🎨 **UI/UX & Frontend Design** | **106** | UI/UX Pro Max, Tailwind, Shadcn, design tokens, and branding. |
-| 🛡️ **Security & Guardrails** | **25** | CSO mode, penetration auditing, vulnerability fixes, and sanitization. |
-| 🧠 **Memory & RAG Systems** | **19** | AgentDB, graph retrieval, vector indexing, and memory rotation. |
-| 🧪 **Testing & QA Verification** | **16** | TDD London School, E2E browser tests, and latency profiling. |
-| 🧊 **Generative 3D Modeling** | **6** | Tencent Hunyuan3D-2 text-to-3D, image-to-3D, and Blender pipelines. |
+| 🐝 **Multi-Agent Swarm** | **239** | Orchestration, handoffs, consensus, and multi-agent coordination. |
+| 🤖 **General Autonomous Ops** | **189** | System management, automation pipelines, CLI controllers, and research/deep-research workflows. |
+| 💻 **Coding & Architecture** | **159** | TypeScript, Python, C++, Rust, backend patterns, system design, and CI/CD. |
+| 🎨 **UI/UX & Frontend Design** | **107** | UI/UX Pro Max, Tailwind, Shadcn, design tokens, taste/brand skills, and branding. |
+| 🔬 **ML Research & Engineering** | **65** | Fine-tuning, RAG, inference serving, distributed training, and paper writing. |
+| 🛡️ **Security & Guardrails** | **31** | CSO mode, penetration auditing, vulnerability fixes, and sanitization. |
+| 🧠 **Memory & RAG Systems** | **30** | AgentDB, graph retrieval, vector indexing, mem0 integration, and memory rotation. |
+| 🧪 **Testing & QA Verification** | **28** | TDD London School, E2E browser tests, code review, debugging, and latency profiling. |
+| 🧊 **Generative 3D Modeling** | **7** | OpenSCAD parametric CAD, Tencent Hunyuan3D-2 text-to-3D, image-to-3D, and Blender pipelines. |
 | ⚡ **Animation & Motion Design** | **3** | Framer Motion, Motion One, layout transitions, and spring physics. |
 
 ---
@@ -212,8 +213,10 @@ RESULTS: 15 PASSED, 0 FAILED (100% Green)
 
 ```
 my-Ai/
-├── .agents/skills/               # 717 Distilled Agent Skills across 9 categories
+├── .agents/skills/               # 858 Distilled Agent Skills across 10 categories
 ├── .github/workflows/ci.yml      # Automated GitHub Actions CI Pipeline
+├── external-skills/              # Full source of bundled external projects (OpenSCAD, Voicebox, GPT Researcher, mem0, Porcupine, pi, agent-skills, ai-research-skills, taste-skill) - reference/setup material behind the skills above
+├── setup-scripts/                # One-command installers for the external projects above (install-openscad.sh, install-voicebox.sh, install-gpt-researcher.sh, install-porcupine.sh)
 ├── agent-memory/                 # Persistent Project State, Metrics & Vaults
 │   ├── master_skills_registry.json # Master Indexed Skill Database
 │   ├── task-state.json           # Single Source of Truth Task State
@@ -245,7 +248,9 @@ my-Ai/
 ├── unified-skill-engine.js       # Semantic Top-K Skill Router
 ├── verify_blueprint_system.js    # 8/8 Blueprint Verification Gate
 ├── Dockerfile                    # Multi-Stage Production Sandbox
-└── docker-compose.yml            # Containerized Deployment Spec
+├── docker-compose.yml            # Containerized Deployment Spec
+├── SETUP_REQUIRED.md             # What still needs external install/API keys (OpenSCAD, Voicebox, GPT Researcher, Porcupine)
+└── VOICE_ARCHITECTURE.md         # How the built-in voice stack relates to the Voicebox/Porcupine skills
 ```
 
 ---

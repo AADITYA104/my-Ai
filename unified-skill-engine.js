@@ -96,12 +96,38 @@ class UnifiedSkillEngine {
    * Build the complete multi-skill system prompt with baked-in Ponytail coding philosophy & completeness rules
    */
   buildEnrichedSystemPrompt(taskDescription, basePrompt = "") {
-    const matchedSkills = this.routeTask(taskDescription, 3);
+    let matchedSkills = this.routeTask(taskDescription, 3);
+    // [PONYTAIL MODE] If explicitly turned off ("stop ponytail" / "normal
+    // mode"), don't inject it at all — matching the skill's own documented
+    // behavior ("Off only: 'stop ponytail'").
+    try {
+      const ponytailMode = require("./ponytail-mode");
+      if (ponytailMode.getCurrentMode() === "off") {
+        matchedSkills = matchedSkills.filter(s => s.name !== "ponytail");
+      }
+    } catch (_) {}
     let skillInjections = "";
 
     if (matchedSkills.length > 0) {
       skillInjections = `\n\n<matched_skills count="${matchedSkills.length}">\n` +
-        matchedSkills.map((s, idx) => `--- SKILL ${idx + 1}: ${s.name.toUpperCase()} [${s.category} / ${s.package_source}] ---\n${s.content_preview}`).join("\n\n") +
+        matchedSkills.map((s, idx) => {
+          // [PONYTAIL MODE] Use the live, mode-filtered full instructions
+          // instead of the registry's 300-char content_preview — this is
+          // strictly more content, tuned to the currently active intensity
+          // (lite/full/ultra), and stays in sync with the skill file itself.
+          let content = s.content_preview;
+          if (s.name === "ponytail") {
+            try {
+              const ponytailMode = require("./ponytail-mode");
+              const ponytailInstructions = require("./ponytail-instructions");
+              const mode = ponytailMode.getCurrentMode();
+              if (mode !== "off") {
+                content = `[Ponytail mode: ${mode}]\n` + ponytailInstructions.getPonytailInstructions(mode);
+              }
+            } catch (_) {}
+          }
+          return `--- SKILL ${idx + 1}: ${s.name.toUpperCase()} [${s.category}${s.package_source ? " / " + s.package_source : ""}] ---\n${content}`;
+        }).join("\n\n") +
         `\n</matched_skills>`;
     }
 

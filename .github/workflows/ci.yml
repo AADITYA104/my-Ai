@@ -5,6 +5,10 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch: {}
+  schedule:
+    # Weekly, so prompt/model drift on the critic gets caught even in weeks with no commits.
+    - cron: "0 6 * * 1"
 
 jobs:
   audit-and-test:
@@ -30,5 +34,36 @@ jobs:
       - name: Run 25-Vector Reliability & Guardrails Test Suite
         run: node tests/agent-reliability.test.js
 
+      - name: Run Integration Smoke Test (real runAgent loop + real tools, no API keys needed)
+        run: node tests/integration-smoke.test.js
+
       - name: Run Blueprint Architecture Verification Gate
         run: node verify_blueprint_system.js
+
+  accuracy-eval:
+    name: Accuracy Eval (golden set, LLM-backed)
+    # Real LLM calls + tokens -- not on every push. Manual, weekly, or opt in
+    # per-PR with the "run-accuracy-eval" label.
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || contains(github.event.pull_request.labels.*.name, 'run-accuracy-eval')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Accuracy Eval (critic / classifier / RAG golden sets)
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node tests/accuracy-eval.test.js
+
+      - name: Weekly metrics report
+        run: node scripts/metrics-report.js --days=7

@@ -18,6 +18,31 @@ Thumbs.db
 *.gguf
 *.zip
 extracted_packages/
-agent-memory/sessions.db*
-agent-memory/.spill/
-*.log
+
+# Runtime-generated data (created automatically on first run) — should not
+# be committed since it holds per-machine usage data, logs, and memory state.
+agent-memory/agentdb_memory.json
+agent-memory/memory_ledger.jsonl
+agent-memory/file_hashes.json
+agent-memory/project-state.json
+agent-memory/memory.md
+agent-memory/browser_selectors.json
+agent-memory/skill-usage.json
+agent-memory/task-state.json
+agent-memory/sessions/
+agent-memory/skills/
+agent-memory/dead_letter_queue.jsonl
+agent-memory/cron-run-log.jsonl
+agent-memory/task_metrics.jsonl
+agent-memory/learnings.jsonl
+agent-memory/daily_learnings.txt
+agent-memory/evolution_report_*.md
+agent-memory/archive_memory_*.json
+agent-memory/cost-tracking.jsonl
+agent-memory/observability.jsonl
+agent-memory/.local_key
+agent-memory/owner_voice.npy
+agent-memory/encrypted_vault.bin
+agent-memory/ponytail-mode.json
+agent-memory/skill-effectiveness.json
+agent-memory/semantic-cache.json

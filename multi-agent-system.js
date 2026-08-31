@@ -1,22 +1,32 @@
 /**
  * ============================================================================
  *  MULTI-AGENT SYSTEM — Orchestrated Specialist Swarm (2026 ARCHITECTURE)
- *  Ported & Enhanced from deepseek-harness-master/packages/subagent & agent-team
- *  - Spawn vs Fork Subagent Execution Models
- *  - Shared Task DAG Board with Dependency Edges (blockedBy)
- *  - Typed JSON Handoff Contracts (Architect -> Researcher -> Coder -> Auditor)
- *  - Deadlock & Infinite Delegation Breaker (Max 5-hop depth)
- *  - DeepSeek Reasoning / CoT Trace Preservation
+ *  - Typed JSON Handoff Contracts (Architect -> Researcher -> Coder -> Auditor).
+ *  - Deadlock & Infinite Delegation Breaker (Max 5-hop depth).
+ *  - Isolated Zero-Temperature Auditor/Critic Evaluation.
  * ============================================================================
  */
 "use strict";
 
 const { buildRagContext } = require("./rag-memory");
-const { callUniversalLLM, callDeepSeek } = require("./llm-providers");
-const { sessionStore } = require("./session-store");
+const { callUniversalLLM, callGemini } = require("./llm-providers");
+let rufloPersonas = { findRelevantPersona: () => null };
+try { rufloPersonas = require("./ruflo-agent-personas"); } catch (_) {}
+
+/** Blend in a real ruflo persona's guidance (if a relevant one is found) without
+ * fully replacing this project's own concise, task-tuned system prompts. */
+function withRufloPersona(basePrompt, taskDescription, categoryHint) {
+  try {
+    const match = rufloPersonas.findRelevantPersona(`${categoryHint} ${taskDescription}`);
+    if (!match) return basePrompt;
+    return `${basePrompt}\n\n--- Additional expert guidance from ruflo's "${match.name}" agent definition (${match.category}) ---\n${match.description}`;
+  } catch (_) {
+    return basePrompt;
+  }
+}
 
 // ---------------------------------------------------------------------------
-// 1. TASK DAG BOARD (Ported from dsh-experimental-agent-team)
+// 1. TASK DAG (Directed Acyclic Graph for Multi-Agent Task Dependencies)
 // ---------------------------------------------------------------------------
 class TaskDAG {
   constructor() {
@@ -79,51 +89,35 @@ class TaskDAG {
   }
 }
 
-// ---------------------------------------------------------------------------
-// 2. SUBAGENT EXECUTION (SPAWN vs FORK)
-// ---------------------------------------------------------------------------
-
-/**
- * Spawns an isolated child subagent with clean context.
- */
-async function spawnSubagent(roleName, prompt, systemPrompt, tools = null) {
-  console.log(`\n🌱 [SPAWN SUBAGENT: ${roleName}] Executing clean-context task...`);
-  const response = await callUniversalLLM(
-    [{ role: "user", content: prompt }],
-    systemPrompt || `You are the ${roleName} specialist. Fulfill the user request with highest accuracy.`
-  );
-  const text = (response.content || []).map(p => p.text || "").join("\n").trim();
-  return {
-    role: roleName,
-    mode: "spawn",
-    output: text,
-    reasoning: response.reasoning || null,
-    modelUsed: response.modelUsed
-  };
+async function callSpecialist(messages, system, complexity = "fast") {
+  const data = await callUniversalLLM(messages, system);
+  return (data.content || []).map(part => part.text || "").join("\n").trim();
 }
 
 /**
- * Forks a subagent seeded with completed parent dialogue history.
+ * [TASK GUARDRAIL] Adapted (concept-level) from CrewAI's task guardrails —
+ * a validator function checks the specialist's output; if it fails, the
+ * specialist is re-called with the validator's feedback appended, up to
+ * maxRetries times. Returns the last output either way (guardrails improve
+ * quality, they don't block delivery forever).
+ * @param {function} validator - (output) => { valid: boolean, feedback?: string }
  */
-async function forkSubagent(roleName, prompt, systemPrompt, parentHistory = []) {
-  console.log(`\n🌿 [FORK SUBAGENT: ${roleName}] Executing seeded-context task (${parentHistory.length} parent turns)...`);
-  const messages = [...parentHistory, { role: "user", content: prompt }];
-  const response = await callUniversalLLM(
-    messages,
-    systemPrompt || `You are the ${roleName} specialist. You inherit the full workspace context.`
-  );
-  const text = (response.content || []).map(p => p.text || "").join("\n").trim();
-  return {
-    role: roleName,
-    mode: "fork",
-    output: text,
-    reasoning: response.reasoning || null,
-    modelUsed: response.modelUsed
-  };
+async function callSpecialistWithGuardrail(messages, system, complexity, validator, maxRetries = 2) {
+  let output = await callSpecialist(messages, system, complexity);
+  if (!validator) return output;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const check = validator(output);
+    if (check.valid) return output;
+    console.log(`  [GUARDRAIL] Attempt ${attempt + 1} failed: ${check.feedback || "no reason given"} — retrying.`);
+    const retryMessages = [...messages, { role: "assistant", content: output }, { role: "user", content: `That didn't pass review: ${check.feedback || "please revise"}. Try again.` }];
+    output = await callSpecialist(retryMessages, system, complexity);
+  }
+  return output;
 }
 
 // ---------------------------------------------------------------------------
-// 3. TYPED JSON HANDOFF CONTRACT SCHEMA
+// 1. TYPED JSON HANDOFF CONTRACT SCHEMA
 // ---------------------------------------------------------------------------
 function createHandoffEnvelope(mission, stage, payload) {
   return {
@@ -136,25 +130,20 @@ function createHandoffEnvelope(mission, stage, payload) {
   };
 }
 
-async function callSpecialist(messages, system, complexity = "fast") {
-  const data = await callUniversalLLM(messages, system);
-  const text = (data.content || []).map(part => part.text || "").join("\n").trim();
-  return { text, reasoning: data.reasoning || null, modelUsed: data.modelUsed };
-}
-
 // ---------------------------------------------------------------------------
-// 4. SPECIALIST AGENTS
+// 2. SPECIALIST AGENTS
 // ---------------------------------------------------------------------------
 
 async function runArchitect(goal) {
   console.log("\n📐 [ARCHITECT AGENT] Designing technical blueprint...");
-  const system = `You are a Principal Software Architect. Design a modular, high-performance architecture for the user request.
+  let system = `You are a Principal Software Architect. Design a modular, high-performance architecture for the user request.
 Respond with clear sections:
 1. Core Design Patterns
 2. Component Breakdown & Data Models
 3. Edge Cases & Constraints`;
-  const res = await callSpecialist([{ role: "user", content: `Goal: ${goal}` }], system, "deep");
-  return createHandoffEnvelope(goal, "ARCHITECT", { spec: res.text, reasoning: res.reasoning });
+  system = withRufloPersona(system, goal, "architecture system-design");
+  const spec = await callSpecialist([{ role: "user", content: `Goal: ${goal}` }], system, "deep");
+  return createHandoffEnvelope(goal, "ARCHITECT", { spec });
 }
 
 async function runResearcher(handoff) {
@@ -164,10 +153,11 @@ async function runResearcher(handoff) {
     ragContext = await buildRagContext(handoff.mission, 3);
   } catch (_) {}
 
-  const system = `You are a Lead Technical Researcher. Provide concise technical best practices, algorithm choices, and relevant library patterns.
+  let system = `You are a Lead Technical Researcher. Provide concise technical best practices, algorithm choices, and relevant library patterns.
 ${ragContext ? `\nRetrieved Knowledge Base:\n${ragContext}` : ""}`;
+  system = withRufloPersona(system, handoff.mission, "analysis research");
 
-  const res = await callSpecialist(
+  const findings = await callSpecialist(
     [
       {
         role: "user",
@@ -184,16 +174,28 @@ ${ragContext ? `\nRetrieved Knowledge Base:\n${ragContext}` : ""}`;
     handoff_depth: handoff.handoff_depth + 1,
     payload: {
       ...handoff.payload,
-      research: res.text,
-      researchReasoning: res.reasoning
+      research: findings
     }
   };
 }
 
 async function runCoder(handoff) {
   console.log("\n💻 [CODER AGENT] Generating production implementation...");
-  const system = `You are a Senior Precision Full-Stack Engineer. Write complete, robust production-ready code with minimal diffs and no placeholders.`;
-  const res = await callSpecialist(
+  let system = `You are a Senior Precision Full-Stack Engineer. Write complete, robust production-ready code with minimal diffs and no placeholders.`;
+  system = withRufloPersona(system, handoff.mission, "development backend coder");
+
+  // [GUARDRAIL] Reject and retry if the coder produces an obvious non-answer
+  // (empty/near-empty output, or a placeholder like "...rest of code..."
+  // instead of real implementation) — cheap, local, no extra LLM call unless
+  // a retry is actually needed.
+  const codeValidator = (output) => {
+    const text = String(output || "").trim();
+    if (text.length < 20) return { valid: false, feedback: "Output is empty or far too short to be a real implementation." };
+    if (/\.\.\.\s*(rest of|remaining|etc)/i.test(text)) return { valid: false, feedback: "Output uses a placeholder like \"...rest of code...\" instead of complete code." };
+    return { valid: true };
+  };
+
+  const code = await callSpecialistWithGuardrail(
     [
       {
         role: "user",
@@ -201,7 +203,8 @@ async function runCoder(handoff) {
       },
     ],
     system,
-    "deep"
+    "deep",
+    codeValidator
   );
 
   return {
@@ -210,21 +213,22 @@ async function runCoder(handoff) {
     handoff_depth: handoff.handoff_depth + 1,
     payload: {
       ...handoff.payload,
-      code: res.text,
-      coderReasoning: res.reasoning
+      code
     }
   };
 }
 
 async function runAuditor(handoff) {
   console.log("\n🛡️ [SECURITY AUDITOR AGENT] Auditing code for security vulnerabilities, memory leaks, and correctness...");
-  const system = `You are an independent, highly skeptical Security & QA Auditor. 
+  let system = `You are an independent, highly skeptical Security & QA Auditor. 
 Evaluate the implementation strictly.
 Format EXACTLY:
 VERDICT: PASS or FAIL
 REASON: <concise actionable critique>`;
+  system = withRufloPersona(system, handoff.mission, "security-audit testing code-review");
 
-  const res = await callSpecialist(
+  // Critic uses zero-temperature / isolated evaluation
+  const auditText = await callSpecialist(
     [
       {
         role: "user",
@@ -235,7 +239,7 @@ REASON: <concise actionable critique>`;
     "fast"
   );
 
-  const isPass = /VERDICT:\s*PASS/i.test(res.text);
+  const isPass = /VERDICT:\s*PASS/i.test(auditText);
 
   return {
     ...handoff,
@@ -243,42 +247,29 @@ REASON: <concise actionable critique>`;
     handoff_depth: handoff.handoff_depth + 1,
     payload: {
       ...handoff.payload,
-      audit: res.text,
+      audit: auditText,
       verdict: isPass ? "PASS" : "FAIL"
     }
   };
 }
 
 // ---------------------------------------------------------------------------
-// 5. MULTI-AGENT COLLABORATION PIPELINE WITH DEADLOCK BREAKER & TASK DAG
+// 3. MULTI-AGENT COLLABORATION PIPELINE WITH DEADLOCK BREAKER
 // ---------------------------------------------------------------------------
 async function runMultiAgentTeam(mission, maxHandoffHops = 5) {
   console.log(`\n======================================================`);
-  console.log(`🚀 LAUNCHING ENHANCED MULTI-AGENT SWARM FOR MISSION:`);
+  console.log(`🚀 LAUNCHING MULTI-AGENT SWARM FOR MISSION:`);
   console.log(`   "${mission}"`);
   console.log(`======================================================`);
 
-  // Initialize Task DAG
-  const dag = new TaskDAG();
-  dag.createTask("t1_arch", "Architecture Design", "Principal Architect designs blueprint");
-  dag.createTask("t2_research", "Technical Research", "Researcher gathers patterns and context", ["t1_arch"]);
-  dag.createTask("t3_code", "Code Implementation", "Coder writes production code", ["t2_research"]);
-  dag.createTask("t4_audit", "Security Audit", "Auditor validates security & correctness", ["t3_code"]);
-
   // Step 1: Architect
-  dag.updateTaskStatus("t1_arch", "in_progress");
   let handoff = await runArchitect(mission);
-  dag.updateTaskStatus("t1_arch", "completed", handoff.payload.spec);
 
   // Step 2: Researcher
-  dag.updateTaskStatus("t2_research", "in_progress");
   handoff = await runResearcher(handoff);
-  dag.updateTaskStatus("t2_research", "completed", handoff.payload.research);
 
   // Step 3: Coder
-  dag.updateTaskStatus("t3_code", "in_progress");
   handoff = await runCoder(handoff);
-  dag.updateTaskStatus("t3_code", "completed", handoff.payload.code);
 
   // Step 4 & Reflexion Loop with Max 5-Hop Deadlock Breaker
   let hopCount = 0;
@@ -286,21 +277,11 @@ async function runMultiAgentTeam(mission, maxHandoffHops = 5) {
     hopCount++;
     console.log(`\n--- [SWARM VERIFICATION HOP ${hopCount}/${maxHandoffHops}] ---`);
 
-    dag.updateTaskStatus("t4_audit", "in_progress");
     const auditHandoff = await runAuditor(handoff);
     console.log(`[AUDIT VERDICT]: ${auditHandoff.payload.verdict}`);
 
     if (auditHandoff.payload.verdict === "PASS") {
-      dag.updateTaskStatus("t4_audit", "completed", auditHandoff.payload.audit);
       console.log("\n🎉 [SWARM SUCCESS] All specialist agents signed off with PASS verdict!");
-
-      // Persist swarm milestone in SQLite session store
-      sessionStore.logEvent("swarm_session", {
-        role: "assistant",
-        content: `Swarm Mission Completed: ${mission}`,
-        reasoning: handoff.payload.coderReasoning || null
-      });
-
       return {
         success: true,
         mission,
@@ -308,14 +289,12 @@ async function runMultiAgentTeam(mission, maxHandoffHops = 5) {
         research: handoff.payload.research,
         finalCode: handoff.payload.code,
         auditReport: auditHandoff.payload.audit,
-        dagSummary: dag.summary(),
         totalHops: hopCount
       };
     }
 
     // Deadlock breaker guard
     if (hopCount >= maxHandoffHops) {
-      dag.updateTaskStatus("t4_audit", "failed", auditHandoff.payload.audit);
       console.warn("\n🚨 [DEADLOCK BREAKER] Swarm reached max handoff depth (5). Escalating to user.");
       return {
         success: false,
@@ -323,7 +302,6 @@ async function runMultiAgentTeam(mission, maxHandoffHops = 5) {
         reason: "Max handoff depth reached without consensus",
         lastCode: handoff.payload.code,
         auditCritique: auditHandoff.payload.audit,
-        dagSummary: dag.summary(),
         totalHops: hopCount
       };
     }
@@ -331,7 +309,7 @@ async function runMultiAgentTeam(mission, maxHandoffHops = 5) {
     // Refinement cycle: Coder fixes based on Auditor critique
     console.log("\n🔄 [REFLEXION] Coder refining implementation based on critique...");
     const fixSystem = `You are the Lead Implementer. Fix the audit failures identified by the Security Auditor.`;
-    const fixedRes = await callSpecialist(
+    const fixedCode = await callSpecialist(
       [
         {
           role: "user",
@@ -342,20 +320,87 @@ async function runMultiAgentTeam(mission, maxHandoffHops = 5) {
       "deep"
     );
 
-    handoff.payload.code = fixedRes.text;
+    handoff.payload.code = fixedCode;
   }
 }
 
+/**
+ * [TASK GRAPH] Run several independent research questions concurrently
+ * instead of one-by-one — safe to parallelize because each is a read-only
+ * LLM call with no shared file-system/state mutation (unlike the main
+ * autonomous agent loop, which stays strictly sequential for that reason).
+ * @param {string[]} topics - independent research questions/topics
+ * @param {number} maxConcurrency
+ */
+async function runParallelResearch(topics, maxConcurrency = 3) {
+  const { TaskGraph } = require("./task-graph");
+  const subtasks = topics.map((topic, i) => ({ id: `research-${i}`, description: topic, dependsOn: [] }));
+  const graph = new TaskGraph(subtasks);
+
+  const summary = await graph.executeAll(async (task) => {
+    console.log(`\n🔬 [PARALLEL RESEARCH] ${task.description}`);
+    let ragContext = "";
+    try { ragContext = await buildRagContext(task.description, 2); } catch (_) {}
+    const system = `You are a research specialist. Give a concise, well-grounded answer.${ragContext ? `\nRetrieved Knowledge:\n${ragContext}` : ""}`;
+    return callSpecialist([{ role: "user", content: task.description }], system, "fast");
+  }, { maxConcurrency, stopOnFailure: false });
+
+  return {
+    topics,
+    results: topics.map((topic, i) => ({
+      topic,
+      status: summary.results[`research-${i}`]?.status,
+      answer: summary.results[`research-${i}`]?.result
+    })),
+    summary: `${summary.done}/${summary.total} research topics completed successfully.`
+  };
+}
+
+/**
+ * [GROUP CHAT] Wraps the same 4 specialists (architect/researcher/coder/
+ * auditor) as conversational participants instead of a fixed handoff chain
+ * — useful for debate/critique-style tasks where agents should respond to
+ * EACH OTHER'S output, not just pass a payload down a line.
+ */
+async function runDebateGroupChat(topic, maxTurns = 8) {
+  const { runSelectorGroupChat } = require("./group-chat");
+  const { maxMessages, or, textMention } = require("./termination-conditions");
+
+  const wrap = (name, description, specialistFn) => ({
+    name, description,
+    respond: async (historyText) => {
+      const result = await specialistFn(historyText.length > 4000 ? historyText.slice(-4000) : historyText);
+      return typeof result === "string" ? result : JSON.stringify(result.payload || result);
+    }
+  });
+
+  const agents = [
+    wrap("Architect", "designs system architecture, patterns, and structure", async (h) => (await runArchitect(h)).payload.spec),
+    wrap("Researcher", "researches best practices, libraries, and prior art", async (h) => (await callSpecialist([{ role: "user", content: h }], "You are a researcher. Give concise findings relevant to the discussion so far.", "fast"))),
+    wrap("Coder", "writes and reviews implementation code", async (h) => (await callSpecialist([{ role: "user", content: h }], "You are a coder. Respond with concrete code or a specific implementation critique.", "deep"))),
+    wrap("Auditor", "critiques for security, correctness, and quality; says TERMINATE when satisfied", async (h) => (await callSpecialist([{ role: "user", content: h }], "You are a strict auditor. Critique the discussion so far. If everything looks solid, end your message with the word TERMINATE.", "fast")))
+  ];
+
+  const termination = or(maxMessages(maxTurns), textMention("TERMINATE"));
+  return runSelectorGroupChat(agents, topic, termination);
+}
+
 module.exports = {
+  TaskDAG,
   runMultiAgentTeam,
   runArchitect,
   runResearcher,
   runCoder,
   runAuditor,
-  spawnSubagent,
-  forkSubagent,
-  TaskDAG,
-  createHandoffEnvelope
+  createHandoffEnvelope,
+  runParallelResearch,
+  callSpecialistWithGuardrail,
+  runDebateGroupChat,
+  runHierarchicalCrew: (mission, maxSteps) => require("./hierarchical-crew").runHierarchicalCrew(
+    mission,
+    { architect: runArchitect, researcher: runResearcher, coder: runCoder, auditor: runAuditor },
+    maxSteps
+  )
 };
 
 if (require.main === module) {

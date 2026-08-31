@@ -14,6 +14,8 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const aidefence = (() => { try { return require("./ai-defence"); } catch (_) { return { scanForPII: () => ({ clean: true }), redactPII: (t) => t }; } })();
+const memoryScoring = (() => { try { return require("./memory-scoring"); } catch (_) { return { scoreRelevance: () => 1.0, rankResults: (r) => r }; } })();
 
 class AdvancedRAGMemory {
   constructor(storageDir = path.join(__dirname, "agent-memory")) {
@@ -79,10 +81,13 @@ class AdvancedRAGMemory {
    * Store a memory unit with tags and metadata
    */
   store(topic, content, tags = [], category = "general") {
+    // AI DEFENCE GATE 1 (pre-storage PII): redact PII before persisting.
+    const { text: safeContent } = aidefence.redactPII(content);
+
     const entry = {
       id: "mem_" + Math.random().toString(36).slice(2, 11),
       topic,
-      content,
+      content: safeContent,
       tags: Array.isArray(tags) ? tags : [tags],
       category,
       timestamp: new Date().toISOString(),
@@ -232,8 +237,37 @@ class AdvancedRAGMemory {
   }
 
   /**
-   * Hybrid semantic (cosine) + BM25 search. Embeddings are computed lazily
-   * and cached onto each memory entry so repeat searches don't re-embed.
+   * [NEW] Maximal Marginal Relevance (MMR) diversity re-ranking — adapted
+   * (concept-level) from ruflo-rag-memory's "diversity ranking". Without
+   * this, top-K semantic results are often near-duplicates of each other.
+   */
+  mmrRerank(candidates, queryVec, limit, lambda = 0.7) {
+    if (!Array.isArray(candidates) || candidates.length <= limit) return candidates.slice(0, limit);
+    const pool = [...candidates];
+    const picked = [];
+    while (picked.length < limit && pool.length > 0) {
+      let bestIdx = 0, bestScore = -Infinity;
+      for (let i = 0; i < pool.length; i++) {
+        const relevance = queryVec ? this.cosineSimilarity(queryVec, pool[i].embedding) : (pool[i].score || 0);
+        let maxSim = 0;
+        for (const p of picked) {
+          const sim = (queryVec && pool[i].embedding && p.embedding)
+            ? this.cosineSimilarity(pool[i].embedding, p.embedding)
+            : (pool[i].topic === p.topic ? 1 : 0);
+          if (sim > maxSim) maxSim = sim;
+        }
+        const mmrScore = lambda * relevance - (1 - lambda) * maxSim;
+        if (mmrScore > bestScore) { bestScore = mmrScore; bestIdx = i; }
+      }
+      picked.push(pool.splice(bestIdx, 1)[0]);
+    }
+    return picked;
+  }
+
+  /**
+   * Hybrid semantic (cosine) + BM25 search, MMR-diversified. Embeddings are
+   * computed lazily and cached onto each memory entry so repeat searches
+   * don't re-embed.
    */
   async searchSemantic(query, limit = 5) {
     const embedModel = process.env.OLLAMA_EMBED_MODEL;
@@ -262,9 +296,11 @@ class AdvancedRAGMemory {
         const cosine = this.cosineSimilarity(queryVec, m.embedding);
         const bm25Norm = (bm25Map.get(m.id) || 0) / maxBm25;
         return { ...m, score: cosine * 0.7 + bm25Norm * 0.3 };
-      });
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, Math.max(limit * 4, 20)); // shortlist before the (more expensive) MMR pass
 
-    return scored.sort((a, b) => b.score - a.score).slice(0, limit);
+    return this.mmrRerank(scored, queryVec, limit);
   }
 
   /**
@@ -303,9 +339,17 @@ class AdvancedRAGMemory {
    */
   async buildRagContext(query, limit = 3) {
     const embedModel = process.env.OLLAMA_EMBED_MODEL;
-    const hits = embedModel ? await this.searchSemantic(query, limit) : this.search(query, limit);
-    if (hits.length === 0) return "";
-    return `\n<retrieved_memory>\n${hits.map(h => `[${h.topic}]:\n${h.content}`).join("\n\n")}\n</retrieved_memory>\n`;
+    const pool = embedModel ? await this.searchSemantic(query, limit * 3) : this.search(query, limit * 3);
+    // [MEMORY SCORING] Re-rank by relevance+recency+importance blend (Generative
+    // Agents pattern) rather than trusting raw BM25/cosine order alone — a
+    // fresher "lesson" memory should usually outrank a stale generic mention.
+    const rescored = memoryScoring.rescore(pool);
+    const hits = rescored.slice(0, limit);
+    // AI DEFENCE GATE 3 (prompt-injection): drop retrieved chunks that look
+    // like an injection attempt before they re-enter an LLM prompt.
+    const safeHits = hits.filter(h => aidefence.scanForInjection(h.content).safe);
+    if (safeHits.length === 0) return "";
+    return `\n<retrieved_memory>\n${safeHits.map(h => `[${h.topic}]:\n${h.content}`).join("\n\n")}\n</retrieved_memory>\n`;
   }
 
   async rememberConversationTurn(content, tags = ["turn"]) {
