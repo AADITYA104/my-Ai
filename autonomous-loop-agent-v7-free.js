@@ -295,7 +295,7 @@ function calculateTaskCost(totalTokens) {
   };
 }
 
-function logTaskMetrics(goal, totalTokens, durationMs, success) {
+function logTaskMetrics(goal, totalTokens, durationMs, success, userId = null) {
   ensureDirs();
   const { costUsd, provider } = calculateTaskCost(totalTokens);
 
@@ -306,7 +306,8 @@ function logTaskMetrics(goal, totalTokens, durationMs, success) {
     totalTokens,
     estimatedCostUsd: costUsd,
     provider,
-    durationMs
+    durationMs,
+    userId: userId || null
   };
   atomicAppendLine(METRICS_FILE, JSON.stringify(entry));
 }
@@ -408,10 +409,19 @@ const TOOL_DEFINITIONS = [
     input_schema: { type: "object", properties: { language: { type: "string", enum: ["javascript","python"] }, code: { type: "string" } }, required: ["language","code"] } },
   { name: "calculator",    description: "Evaluates an arithmetic expression.",
     input_schema: { type: "object", properties: { expression: { type: "string" } }, required: ["expression"] } },
+  { name: "design_audit",  description: "Runs the Impeccable design/UX anti-pattern detector on a UI file or folder (e.g. 'public' or 'public/index.html'). Returns structured findings: accessibility, performance, responsive, and design anti-pattern issues.",
+    input_schema: { type: "object", properties: { target: { type: "string", description: "Relative path to audit, e.g. 'public' or 'public/index.html'" } }, required: ["target"] } },
+  { name: "generate_3d_model", description: "Generates a 3D model (.glb file) from a text description or an image, using the Hunyuan3D-2 model service. REQUIRES a separate GPU machine running services/hunyuan3d/api_server.py -- this tool is a client, not the model itself.",
+    input_schema: { type: "object", properties: {
+      text: { type: "string", description: "Text description of the object to generate" },
+      imagePath: { type: "string", description: "Path to a local image file" },
+      texture: { type: "boolean", description: "Also generate a color texture" },
+      outputPath: { type: "string", description: "Where to save the resulting .glb" }
+    }, required: [] } },
   { name: "ruflo_tool",    description: "Calls a real ruflo MCP tool (333 available: agent_spawn, swarm_init, memory_store/search with real vector search, hooks_intelligence_*, config_*, etc.) — only works once RUFLO_MCP_PATH is set in .env pointing at a built ruflo v3/@claude-flow/cli/bin/mcp-server.js. Use ruflo_tool with tool_name='tools_list' (no args) first to see what's available.",
     input_schema: { type: "object", properties: { tool_name: { type: "string" }, args: { type: "object" } }, required: ["tool_name"] } },
   { name: "parallel_research", description: "Research multiple independent questions/topics concurrently instead of one at a time — use when a task has 2+ genuinely independent sub-questions to investigate (e.g. comparing options, gathering several unrelated facts).",
-    input_schema: { type: "object", properties: { topics: { type: "array" } }, required: ["topics"] } },
+    input_schema: { type: "object", properties: { topics: { type: "array", items: { type: "string" } } }, required: ["topics"] } },
   { name: "sequential_thinking", description: "Use for genuinely hard, multi-step problems where you need to reason step-by-step, revise earlier thoughts, or branch into alternative approaches before committing to an answer — NOT for simple/obvious tasks. Call repeatedly, one thought at a time, incrementing thoughtNumber, until nextThoughtNeeded is false.",
     input_schema: { type: "object", properties: {
       thought: { type: "string" }, thoughtNumber: { type: "number" }, totalThoughts: { type: "number" },
@@ -569,6 +579,86 @@ async function executeTool(toolName, args) {
       }
       case "calculator":
         return safeEvaluateArithmetic(args.expression);
+      case "design_audit": {
+        const base = FREEZE_DIR ? FREEZE_DIR.slice(0, -1) : __dirname;
+        const targetRel = (args.target || "public").replace(/^\/+/, "");
+        const targetPath = path.resolve(base, targetRel);
+        const targetLabel = path.relative(base, targetPath) || targetRel;
+        if (!fs.existsSync(targetPath)) {
+          return `Error: Target path does not exist: ${targetRel}`;
+        }
+        const scriptPath = path.join(__dirname, ".claude", "skills", "impeccable", "scripts", "detect.mjs");
+        if (!fs.existsSync(scriptPath)) {
+          return `[DESIGN_AUDIT_UNAVAILABLE] Impeccable detector script not found at ${scriptPath}.`;
+        }
+        const res = spawnSync("node", [scriptPath, targetPath, "--json", "--quiet"], { cwd: base, timeout: 30000, encoding: "utf-8" });
+        const stdout = (res.stdout || "").trim();
+        if (!stdout) {
+          const err = (res.stderr || "").slice(0, 500);
+          return `[DESIGN_AUDIT] No output from detector.${err ? " stderr: " + err : " (clean audit)"}`;
+        }
+        let findings;
+        try { findings = JSON.parse(stdout); } catch { return `[DESIGN_AUDIT] Detector returned:\n${stdout.slice(0, 1500)}`; }
+        if (!Array.isArray(findings) || findings.length === 0) return `[DESIGN_AUDIT] Clean -- no anti-patterns found in ${targetLabel}.`;
+        const primary = findings.filter(f => !f.advisory);
+        const advisory = findings.filter(f => f.advisory);
+        const relFile = (f) => path.relative(base, f.file || "") || f.file;
+        const fmt = (f) => `- [${f.severity || "warning"}] ${f.antipattern}: ${relFile(f)}${f.line ? ":" + f.line : ""} -- ${f.description}`;
+        const body = primary.slice(0, 20).map(fmt).join("\n");
+        const more = primary.length > 20 ? `\n...and ${primary.length - 20} more.` : "";
+        const advisoryNote = advisory.length ? `\n(+${advisory.length} advisory finding(s))` : "";
+        return `[DESIGN_AUDIT] ${primary.length} issue(s) found in ${targetLabel}:\n${body}${more}${advisoryNote}`;
+      }
+      case "generate_3d_model": {
+        if (!args.text && !args.imagePath) return "Error: provide either 'text' or 'imagePath' to generate_3d_model.";
+        const apiUrl = process.env.HUNYUAN3D_API_URL || "http://localhost:8081";
+        const base = FREEZE_DIR ? FREEZE_DIR.slice(0, -1) : __dirname;
+        const payload = { texture: !!args.texture };
+        if (args.imagePath) {
+          const imgPath = path.resolve(base, args.imagePath);
+          if (!isWithinFreezeDir(imgPath)) return `[BLOCKED] ${args.imagePath} is outside FREEZE_DIR.`;
+          if (!fs.existsSync(imgPath)) return `Error: image not found at ${args.imagePath}`;
+          payload.image = fs.readFileSync(imgPath).toString("base64");
+        } else {
+          payload.text = args.text;
+        }
+        let sendRes;
+        try {
+          sendRes = await fetch(`${apiUrl}/send`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(15000)
+          });
+        } catch (e) {
+          return `[3D_GEN_UNAVAILABLE] Could not reach Hunyuan3D service at ${apiUrl}: ${e.message}`;
+        }
+        if (!sendRes.ok) return `[3D_GEN_ERROR] Service returned HTTP ${sendRes.status}`;
+        let uid;
+        try { ({ uid } = await sendRes.json()); } catch { return "[3D_GEN_ERROR] Invalid JSON response"; }
+        if (!uid) return "[3D_GEN_ERROR] No job id returned";
+        const pollStart = Date.now();
+        const maxWaitMs = 5 * 60 * 1000;
+        while (Date.now() - pollStart < maxWaitMs) {
+          await new Promise(r => setTimeout(r, 3000));
+          try {
+            const statusRes = await fetch(`${apiUrl}/status/${uid}`, { signal: AbortSignal.timeout(10000) });
+            const statusJson = await statusRes.json();
+            if (statusJson.status === "error") return `[3D_GEN_FAILED] Job failed: ${statusJson.message || "unknown"}`;
+            if (statusJson.status === "completed") {
+              const outRel = args.outputPath || `workspace/generated-${uid}.glb`;
+              const outPath = path.resolve(base, outRel);
+              if (!isWithinFreezeDir(outPath)) return `[BLOCKED] ${outRel} is outside FREEZE_DIR.`;
+              fs.mkdirSync(path.dirname(outPath), { recursive: true });
+              fs.writeFileSync(outPath, Buffer.from(statusJson.model_base64, "base64"));
+              return `[3D_GEN] Model generated: ${outRel}`;
+            }
+          } catch (e) {
+            return `[3D_GEN_ERROR] Polling failed: ${e.message}`;
+          }
+        }
+        return `[3D_GEN_TIMEOUT] Job ${uid} timed out`;
+      }
       case "ruflo_tool": {
         if (!rufloBridge.isConfigured()) {
           return `[TOOL_ERROR]: Ruflo MCP bridge not configured. Set RUFLO_MCP_PATH in .env (see ruflo-bridge-setup.md) to use real ruflo tools.`;
@@ -755,6 +845,71 @@ async function executeTool(toolName, args) {
 }
 
 // ===========================================================================
+// [IMPECCABLE DESIGN GUIDANCE]
+// ===========================================================================
+const IMPECCABLE_DIR = path.join(__dirname, ".claude", "skills", "impeccable");
+const _designDocCache = {};
+
+function readDesignDoc(relPath, maxChars) {
+  if (_designDocCache[relPath] !== undefined) return _designDocCache[relPath];
+  try {
+    const full = path.join(IMPECCABLE_DIR, relPath);
+    let text = fs.readFileSync(full, "utf-8");
+    text = text.replace(/^---[\s\S]*?---\n/, "");
+    text = text.slice(0, maxChars).trim();
+    _designDocCache[relPath] = text;
+    return text;
+  } catch {
+    _designDocCache[relPath] = "";
+    return "";
+  }
+}
+
+const DESIGN_KEYWORD_MAP = [
+  { re: /\b(audit|a11y|accessib|contrast|wcag)\b/i, doc: "reference/audit.md" },
+  { re: /\b(harden|edge case|error state|empty state|offline|slow network)\b/i, doc: "reference/harden.md" },
+  { re: /\b(optimi[sz]e|performance|slow|bottleneck|lag)\b/i, doc: "reference/optimize.md" },
+  { re: /\b(color|colour|palette|theme)\b/i, doc: "reference/colorize.md" },
+  { re: /\b(responsive|mobile|adapt|breakpoint|viewport)\b/i, doc: "reference/adapt.md" },
+  { re: /\b(typograph|font|type\s?scale)\b/i, doc: "reference/typeset.md" },
+  { re: /\b(layout|spacing|align|grid|hierarchy)\b/i, doc: "reference/layout.md" },
+  { re: /\b(animat|motion|transition|micro-?interaction)\b/i, doc: "reference/animate.md" },
+  { re: /\b(bold|louder|dramatic)\b/i, doc: "reference/bolder.md" },
+  { re: /\b(quiet|calmer|subtle|toned? down)\b/i, doc: "reference/quieter.md" },
+  { re: /\b(onboard|first[- ]?run|empty state)\b/i, doc: "reference/onboard.md" },
+];
+
+const DESIGN_TRIGGER_RE = /\b(ui|ux|design|frontend|front-end|css|html|style|styling|page|screen|component|button|form|dashboard|landing|layout|polish|responsive|accessib)\b/i;
+
+function buildDesignGuidance(subtaskDescription) {
+  if (!fs.existsSync(IMPECCABLE_DIR)) return "";
+  const text = String(subtaskDescription || "");
+  const touchesPublicFile = /\bpublic\//i.test(text) || /\.(html|css)\b/i.test(text);
+  if (!touchesPublicFile && !DESIGN_TRIGGER_RE.test(text)) return "";
+
+  const principles = readDesignDoc("SKILL.md", 1200);
+  const matched = DESIGN_KEYWORD_MAP.find(k => k.re.test(text));
+  const refDoc = matched ? readDesignDoc(matched.doc, 1000) : readDesignDoc("reference/polish.md", 1000);
+  const refLabel = matched ? matched.doc.replace("reference/", "").replace(".md", "") : "polish";
+
+  return `\nDESIGN GUIDANCE (Impeccable skill, auto-attached -- this subtask touches UI):\n${principles}\n\n[${refLabel} guidance]\n${refDoc}\n\nUse the design_audit tool on the target file/folder after making UI changes to confirm no anti-patterns were introduced.\n`;
+}
+
+function buildSkillEngineGuidance(subtaskDescription) {
+  if (!subtaskDescription) return "";
+  try {
+    const skillEngine = require("./unified-skill-engine");
+    const matches = skillEngine.routeTask(subtaskDescription, 2)
+      .filter(m => m.category === "scientific_research" && m.score >= 10);
+    if (matches.length === 0) return "";
+    const block = matches.map(m => `--- ${m.name.toUpperCase()} [${m.category}] ---\n${m.content_preview}`).join("\n\n");
+    return `\nMATCHED SCIENTIFIC SKILL(S) (unified-skill-engine, auto-attached):\n${block}\n`;
+  } catch {
+    return "";
+  }
+}
+
+// ===========================================================================
 // [8] BOOTSTRAP & CRITIC
 // ===========================================================================
 async function bootstrap(goal) {
@@ -791,12 +946,25 @@ async function bootstrap(goal) {
 }
 
 async function criticStep(subtask, result) {
-  const system = 'You are an independent critic. Respond EXACTLY:\nVERDICT: PASS\nREASON: <one line>\nor\nVERDICT: FAIL\nREASON: <one line>';
+  const system = 'You are an independent critic verifying another agent\'s work. You did NOT produce this result -- judge it, do not defend it.\nRespond EXACTLY in this format:\nVERDICT: PASS\nCONFIDENCE: <0.0-1.0>\nREASON: <one line>\n\n(or VERDICT: FAIL / VERDICT: UNCERTAIN, same shape)\n\nUse UNCERTAIN when the result or done-criteria don\'t give you enough to verify correctness -- do not guess PASS to be agreeable, and do not guess FAIL to be safe.';
   const res = await callLLM(
     [{ role: "user", content: `Subtask: ${subtask.description}\nDone criteria: ${subtask.doneWhen}\nResult: ${result}` }],
     system
   );
-  return { pass: /VERDICT:\s*PASS/i.test(res.text), feedback: res.text };
+  const verdictMatch    = res.text.match(/VERDICT:\s*(PASS|FAIL|UNCERTAIN)/i);
+  const confidenceMatch = res.text.match(/CONFIDENCE:\s*([\d.]+)/i);
+  const verdict    = verdictMatch ? verdictMatch[1].toUpperCase() : (/PASS/i.test(res.text) ? "PASS" : "UNCERTAIN");
+  const confidence = confidenceMatch ? Math.max(0, Math.min(1, parseFloat(confidenceMatch[1]))) : 0.8;
+
+  const floor = CONFIG.CRITIC_CONFIDENCE_FLOOR !== undefined ? CONFIG.CRITIC_CONFIDENCE_FLOOR : 0.6;
+  const belowFloor = verdict === "PASS" && confidence < floor;
+  return {
+    pass: verdict === "PASS" && !belowFloor,
+    uncertain: verdict === "UNCERTAIN" || belowFloor,
+    verdict,
+    confidence,
+    feedback: res.text
+  };
 }
 
 async function runRootCauseAnalysis(subtask, failureHistory) {
@@ -1072,7 +1240,7 @@ async function runAgent(goal, controlOptions) {
     while (outerIteration < CONFIG.MAX_OUTER_ITERATIONS) {
       if (controlOptions.isStopRequested && controlOptions.isStopRequested()) {
         console.log("\nExecution halted by user.");
-        logTaskMetrics(goal, tokensUsedSoFar, Date.now() - overallStartTime, false);
+        logTaskMetrics(goal, tokensUsedSoFar, Date.now() - overallStartTime, false, controlOptions.userId || null);
         return { success: false, reason: "Stopped by user", iterations: outerIteration, tokensUsed: tokensUsedSoFar };
       }
       outerIteration++;
@@ -1083,13 +1251,13 @@ async function runAgent(goal, controlOptions) {
         console.log("\nAll subtasks complete!");
         taskState.status = "COMPLETED";
         writeTaskState(taskState);
-        logTaskMetrics(goal, tokensUsedSoFar, Date.now() - overallStartTime, true);
+        logTaskMetrics(goal, tokensUsedSoFar, Date.now() - overallStartTime, true, controlOptions.userId || null);
         return { success: true, iterations: outerIteration, tokensUsed: tokensUsedSoFar, skillsLearned: listSkills().length };
       }
 
       console.log(`\n=== Iteration ${outerIteration} - ${remaining.length} subtasks left | tokens: ${tokensUsedSoFar} ===`);
       if (tokensUsedSoFar >= CONFIG.MAX_TOKENS_TOTAL) {
-        logTaskMetrics(goal, tokensUsedSoFar, Date.now() - overallStartTime, false);
+        logTaskMetrics(goal, tokensUsedSoFar, Date.now() - overallStartTime, false, controlOptions.userId || null);
         return { success: false, reason: "Token budget exhausted", iterations: outerIteration };
       }
 
@@ -1107,7 +1275,7 @@ async function runAgent(goal, controlOptions) {
         appendMemory(`Subtask ${remaining[0].id} failed: ${outcome.reason}`);
         appendLearning("decide", `failure:${remaining[0].id}:${Date.now()}`, `Subtask failed: ${outcome.reason}`);
         if (outcome.reason === "Stop requested") {
-          logTaskMetrics(goal, tokensUsedSoFar, Date.now() - overallStartTime, false);
+          logTaskMetrics(goal, tokensUsedSoFar, Date.now() - overallStartTime, false, controlOptions.userId || null);
           return { success: false, reason: "Stopped by user", iterations: outerIteration, tokensUsed: tokensUsedSoFar };
         }
 
@@ -1116,13 +1284,17 @@ async function runAgent(goal, controlOptions) {
         }
 
         if (noProgressStreak >= CONFIG.NO_PROGRESS_LIMIT) {
-          logTaskMetrics(goal, tokensUsedSoFar, Date.now() - overallStartTime, false);
+          logTaskMetrics(goal, tokensUsedSoFar, Date.now() - overallStartTime, false, controlOptions.userId || null);
           return { success: false, reason: "No progress - halted.", iterations: outerIteration };
         }
       }
     }
-    logTaskMetrics(goal, tokensUsedSoFar, Date.now() - overallStartTime, false);
+    logTaskMetrics(goal, tokensUsedSoFar, Date.now() - overallStartTime, false, controlOptions.userId || null);
     return { success: false, reason: "Max iterations reached", iterations: outerIteration };
+  } catch (fatalErr) {
+    console.error(`\n❌ [FATAL LOOP ERROR]: ${fatalErr.message}`);
+    logTaskMetrics(goal, tokensUsedSoFar, Date.now() - overallStartTime, false, controlOptions.userId || null);
+    return { success: false, reason: fatalErr.message };
   } finally {
     releaseWorkspaceLock();
   }
@@ -1130,6 +1302,10 @@ async function runAgent(goal, controlOptions) {
 
 module.exports = {
   runAgent,
+  executeTool,
+  criticStep,
+  buildDesignGuidance,
+  buildSkillEngineGuidance,
   listSkills,
   TOOL_DEFINITIONS,
   redactSecrets,

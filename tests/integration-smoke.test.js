@@ -52,8 +52,10 @@ async function runTest(name, fn) {
 function cleanupTestArtifacts() {
   const lock = path.join(AGENT_DIR, "agent-memory", ".workspace.lock");
   const metrics = path.join(AGENT_DIR, "agent-memory", "task_metrics.jsonl");
+  const state = path.join(AGENT_DIR, "agent-memory", "task-state.json");
   if (fs.existsSync(lock)) fs.unlinkSync(lock);
   if (fs.existsSync(metrics)) fs.unlinkSync(metrics);
+  if (fs.existsSync(state)) fs.unlinkSync(state);
 }
 
 async function main() {
@@ -89,12 +91,22 @@ async function main() {
   // of returning {success:false, reason:...} like every other failure path.
   await runTest("runAgent() with no LLM provider returns a clean failure, does not throw", async () => {
     cleanupTestArtifacts();
+    const origOffline = process.env.FORCE_OFFLINE;
+    const origOllama = process.env.OLLAMA_HOST;
+    delete process.env.GOOGLE_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.DEEPSEEK_API_KEY;
+    process.env.FORCE_OFFLINE = "true";
+    process.env.OLLAMA_HOST = "http://127.0.0.1:99999";
     let result;
     let threw = null;
     try {
       result = await runAgent("say hello", { userId: "smoke-test-fatal-path" });
     } catch (e) {
       threw = e;
+    } finally {
+      if (origOffline !== undefined) process.env.FORCE_OFFLINE = origOffline; else delete process.env.FORCE_OFFLINE;
+      if (origOllama !== undefined) process.env.OLLAMA_HOST = origOllama; else delete process.env.OLLAMA_HOST;
     }
     assert.strictEqual(threw, null, `runAgent() threw instead of returning cleanly: ${threw && threw.message}`);
     assert.strictEqual(result.success, false, "expected success:false when no LLM provider is reachable");
@@ -200,8 +212,10 @@ async function main() {
       });
 
       delete process.env.HUNYUAN3D_API_URL;
-      server.close();
-      resolve();
+      if (typeof server.closeAllConnections === "function") server.closeAllConnections();
+      server.close(() => {
+        resolve();
+      });
     });
   });
 
@@ -223,7 +237,7 @@ async function main() {
     console.log("Failing cases:");
     for (const r of results.filter((r) => !r.ok)) console.log(`  - ${r.name}: ${r.reason}`);
   }
-  process.exit(failed > 0 ? 1 : 0);
+  process.exitCode = failed > 0 ? 1 : 0;
 }
 
 if (require.main === module) {

@@ -821,6 +821,9 @@
     renderer.setSize(innerWidth, innerHeight);
   });
 
+  window.ultronAudioPulse = 0;
+  let currentPulse = 0;
+
   function animate() {
     requestAnimationFrame(animate);
     const t = Date.now() * 0.001;
@@ -831,12 +834,25 @@
     camera.position.y = -tmy * 0.5;
     camera.lookAt(0, 0, 0);
 
-    coreMesh.rotation.x = t * 0.2; coreMesh.rotation.y = t * 0.3;
-    innerMesh.rotation.x = -t * 0.4; innerMesh.rotation.y = -t * 0.5;
-    ringA.rotation.x = t * 0.35; ringA.rotation.y = t * 0.2;
-    ringB.rotation.y = -t * 0.3; ringB.rotation.z = t * 0.25;
-    ringC.rotation.x = t * 0.15; ringC.rotation.z = -t * 0.2;
-    particles.rotation.y = t * 0.012;
+    const targetP = window.ultronAudioPulse || 0;
+    currentPulse += (targetP - currentPulse) * 0.15;
+    const pulseScale = 1.0 + (currentPulse * 0.35) + Math.sin(t * 3) * 0.025;
+
+    coreMesh.scale.set(pulseScale, pulseScale, pulseScale);
+    innerMesh.scale.set(pulseScale * 1.1, pulseScale * 1.1, pulseScale * 1.1);
+
+    coreL.intensity = 4 + currentPulse * 10 + Math.sin(t * 4) * 1.5;
+    rimL.intensity = 3 + currentPulse * 6;
+
+    const rotSpeed = 1.0 + currentPulse * 2.0;
+    coreMesh.rotation.x = t * 0.2 * rotSpeed;
+    coreMesh.rotation.y = t * 0.3 * rotSpeed;
+    innerMesh.rotation.x = -t * 0.4 * rotSpeed;
+    innerMesh.rotation.y = -t * 0.5 * rotSpeed;
+    ringA.rotation.x = t * 0.35 * rotSpeed; ringA.rotation.y = t * 0.2 * rotSpeed;
+    ringB.rotation.y = -t * 0.3 * rotSpeed; ringB.rotation.z = t * 0.25 * rotSpeed;
+    ringC.rotation.x = t * 0.15 * rotSpeed; ringC.rotation.z = -t * 0.2 * rotSpeed;
+    particles.rotation.y = t * 0.012 * rotSpeed;
 
     renderer.render(scene, camera);
   }
@@ -1031,6 +1047,7 @@ function appendChat(role, text, extras = {}) {
 
 // ── AUDIO WAVE EQUALIZER ANIMATION ────────────────────────────
 function setWaveAnimation(active, intensity = 0.5) {
+  window.ultronAudioPulse = active ? intensity : 0;
   if (active) {
     if (waveAnimationInterval) clearInterval(waveAnimationInterval);
     waveAnimationInterval = setInterval(() => {
