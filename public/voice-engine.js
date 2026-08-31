@@ -156,21 +156,26 @@ async function processHeardVoice(transcript) {
   }
 }
 
-async function sendQueryToUltron(promptText, speakBack = true) {
+async function sendQueryToUltron(promptText, speakBack = true, alreadyAppendedUser = false, imageBase64 = null) {
   try {
     if (speechSubtitle) speechSubtitle.innerText = "Processing order, Boss...";
+
+    const reqBody = { message: promptText || "Analyze input" };
+    if (imageBase64) reqBody.image = imageBase64;
 
     const res = await fetch("/api/ultron/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: promptText })
+      body: JSON.stringify(reqBody)
     });
 
     const data = await res.json();
     const reply = data.reply || "Yes Boss, system operational.";
 
+    if (!alreadyAppendedUser && window.appendChat) {
+      window.appendChat("user", promptText, imageBase64);
+    }
     if (window.appendChat) {
-      window.appendChat("user", promptText);
       window.appendChat("ultron", reply);
     }
 
@@ -267,3 +272,25 @@ function startWaveAnimation(active) {
     });
   }
 }
+
+function changeVoiceLang(langCode) {
+  currentLang = langCode || "gu-IN";
+  localStorage.setItem("ultron_voice_lang", currentLang);
+  console.log("🌐 [VOICE ENGINE] Recognition Language switched to:", currentLang);
+  if (speechRecognizer) {
+    try {
+      speechRecognizer.lang = currentLang;
+      speechRecognizer.abort();
+      if (isMicActive && !isSpeaking) {
+        setTimeout(() => { try { speechRecognizer.start(); } catch (_) {} }, 200);
+      }
+    } catch (_) {}
+  }
+}
+window.changeVoiceLang = changeVoiceLang;
+window.initVoiceEngine = initVoiceEngine;
+window.toggleMic = toggleMic;
+window.startListening = startListening;
+window.stopListening = stopListening;
+window.ultronSpeak = ultronSpeak;
+window.sendQueryToUltron = sendQueryToUltron;

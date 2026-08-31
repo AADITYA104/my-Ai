@@ -17,7 +17,9 @@ let currentScale = 1.0;
 let targetScale = 1.0;
 
 function initUltron3D() {
+  if (renderer) return;
   const container = document.getElementById("canvas-container");
+  if (!container) return;
   const width = window.innerWidth;
   const height = window.innerHeight;
 

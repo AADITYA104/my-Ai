@@ -13,15 +13,20 @@ let prevPalmX = null;
 let prevPalmY = null;
 let prevPinch = null;
 
-const vid = document.getElementById("webcam-video");
-const cvs = document.getElementById("hand-canvas");
-const ctx = cvs.getContext("2d");
-const pipTip = document.getElementById("pip-tip");
-const pipBox = document.getElementById("gesture-pip");
-const camBtn = document.getElementById("cam-btn");
-const camLbl = document.getElementById("cam-lbl");
+let vid, cvs, ctx, pipTip, pipBox, camBtn, camLbl;
+
+function ensureGestureElements() {
+  if (!vid) vid = document.getElementById("webcam-video");
+  if (!cvs) cvs = document.getElementById("hand-canvas");
+  if (cvs && !ctx) ctx = cvs.getContext("2d");
+  if (!pipTip) pipTip = document.getElementById("pip-tip");
+  if (!pipBox) pipBox = document.getElementById("gesture-pip");
+  if (!camBtn) camBtn = document.getElementById("cam-btn");
+  if (!camLbl) camLbl = document.getElementById("cam-lbl");
+}
 
 function initGestureEngine() {
+  ensureGestureElements();
   if (!window.Hands || !window.Camera) {
     setTimeout(initGestureEngine, 800);
     return;
@@ -42,7 +47,7 @@ function initGestureEngine() {
 
   camTracker = new Camera(vid, {
     onFrame: async () => {
-      if (isCamOn && vid.videoWidth > 0) {
+      if (isCamOn && vid && vid.videoWidth > 0) {
         await handsAI.send({ image: vid });
       }
     },
@@ -52,27 +57,32 @@ function initGestureEngine() {
 }
 
 function toggleGestureCam() {
+  ensureGestureElements();
   if (!isCamOn) {
     if (!camTracker) initGestureEngine();
     isCamOn = true;
-    pipBox.classList.remove("hidden");
-    camBtn.classList.add("active");
-    camLbl.innerText = "CAM: ON";
-    camTracker.start().catch(err => {
-      console.warn("Cam permission failed:", err.message);
-      pipTip.innerText = "Mouse control active";
-    });
+    if (pipBox) pipBox.classList.remove("hidden");
+    if (camBtn) camBtn.classList.add("active");
+    if (camLbl) camLbl.innerText = "CAM: ON";
+    if (camTracker) {
+      camTracker.start().catch(err => {
+        console.warn("Cam permission failed:", err.message);
+        if (pipTip) pipTip.innerText = "Mouse control active";
+      });
+    }
   } else {
     isCamOn = false;
-    pipBox.classList.add("hidden");
-    camBtn.classList.remove("active");
-    camLbl.innerText = "GESTURES";
+    if (pipBox) pipBox.classList.add("hidden");
+    if (camBtn) camBtn.classList.remove("active");
+    if (camLbl) camLbl.innerText = "GESTURES";
   }
 }
 
 function handleHandDetections(results) {
-  cvs.width = vid.videoWidth || 240;
-  cvs.height = vid.videoHeight || 180;
+  ensureGestureElements();
+  if (!cvs || !ctx) return;
+  cvs.width = (vid && vid.videoWidth) || 240;
+  cvs.height = (vid && vid.videoHeight) || 180;
   ctx.save();
   ctx.clearRect(0, 0, cvs.width, cvs.height);
 
