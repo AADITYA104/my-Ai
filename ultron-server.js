@@ -719,7 +719,7 @@ function startServer(port = PORT, retries = 2) {
   const server = app.listen(port, () => {
     console.log("\n========================================================");
     console.log(`🤖 ULTRON 2026 OMNI-ENGINE ONLINE ON http://localhost:${port}`);
-    console.log(`   Skills Loaded: 717 Unique Skills across 9 Categories`);
+    console.log(`   Skills Loaded: 880 Unique Skills across 10 Categories`);
     console.log(`   Features: Multimodal Vision + 12 Cognitive Tools + Live SSE HUD`);
     console.log("========================================================\n");
 
