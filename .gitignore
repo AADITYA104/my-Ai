@@ -46,3 +46,6 @@ agent-memory/encrypted_vault.bin
 agent-memory/ponytail-mode.json
 agent-memory/skill-effectiveness.json
 agent-memory/semantic-cache.json
+agent-memory/sessions.db*
+agent-memory/vision_temp/
+agent-memory/.spill/
