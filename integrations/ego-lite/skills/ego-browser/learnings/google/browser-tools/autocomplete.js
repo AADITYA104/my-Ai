@@ -1,4 +1,4 @@
-async function(args) {
+module.exports = async function(args) {
   const suggestionEls = document.querySelectorAll('span.gsqphr');
   if (suggestionEls.length) {
     return [...suggestionEls].map(el => el.innerText?.trim() || '').filter(Boolean);

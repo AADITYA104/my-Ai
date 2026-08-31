@@ -58,5 +58,10 @@
     },
     "devDependencies": {
         "electron": "^33.0.0"
+    },
+    "optionalDependencies": {
+        "tesseract.js": "^5.1.1",
+        "@picovoice/porcupine-node": "^3.0.3",
+        "@picovoice/pvrecorder-node": "^2.0.2"
     }
 }

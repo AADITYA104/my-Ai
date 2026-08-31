@@ -1,4 +1,4 @@
-async function(args) {
+module.exports = async function(args) {
   const el = document.querySelector('[data-testid="tweet"]:focus') || document.querySelector('[data-testid="tweet"]');
   if (!el) return { error: 'no active tweet found' };
   return {
