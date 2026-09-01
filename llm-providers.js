@@ -370,11 +370,18 @@ async function callOllama(messages, system, maxRetries = 3, taskConfig = null) {
 // ---------------------------------------------------------------------------
 async function callUniversalLLM(messages, system, tools = null) {
   const continuityContext = sessionContinuity.getContextPrompt();
-  const baseSystemWithContinuity = (system || "") + continuityContext;
+  let baseSystemWithContinuity = (system || "") + continuityContext;
 
   const lastMsg = messages[messages.length - 1]?.content || "";
   const queryStr = typeof lastMsg === "string" ? lastMsg : JSON.stringify(lastMsg);
   const taskConfig = getTaskConfig(queryStr);
+
+  // Dynamic Skill Registry Injection across all universal LLM calls
+  if (queryStr && typeof queryStr === "string" && queryStr.length > 5 && !baseSystemWithContinuity.includes("SKILL ENGINE GUIDANCE")) {
+    try {
+      baseSystemWithContinuity = skillEngine.buildEnrichedSystemPrompt(queryStr, baseSystemWithContinuity, 2);
+    } catch (_) {}
+  }
 
   // [SEMANTIC CACHE] Only cache pure text Q&A (no tools) — a cached tool_use
   // response would replay a stale action, which is unsafe. Cache key includes

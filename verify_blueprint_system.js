@@ -70,7 +70,9 @@ const allPassed = checklist.every(c => c.status);
 if (allPassed) {
   console.log("🌟 RESULT: 8/8 BLUEPRINT DEFINITION OF DONE POINTS FULLY SATISFIED!");
   console.log("   ULTRON IS NOW FULLY PRODUCTION-READY, RELIABLE, AND CAPABLE.");
+  process.exit(0);
 } else {
   console.log("⚠️ SOME CHECKPOINTS REQUIRE ATTENTION.");
+  process.exit(1);
 }
 console.log("=================================================================\n");

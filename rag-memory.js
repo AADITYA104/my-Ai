@@ -197,6 +197,16 @@ class AdvancedRAGMemory {
       .slice(0, limit);
   }
 
+  delete(idOrTopic) {
+    const before = this.memories.length;
+    this.memories = this.memories.filter(m => m.id !== idOrTopic && m.topic !== idOrTopic);
+    if (this.memories.length !== before) {
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
   /**
    * [NEW] Ollama Embedding-Based Semantic Search
    * Implements the behavior .env.example already documents ("install an

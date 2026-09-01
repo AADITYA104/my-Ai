@@ -232,11 +232,20 @@ function checkCommandSafety(command) {
 }
 
 async function askHumanConfirmation(question) {
-  if (process.env.NON_INTERACTIVE === "true") return true;
+  if (process.env.NON_INTERACTIVE === "true" || !process.stdin.isTTY || process.env.CI) {
+    console.log(`ℹ️ [NON-INTERACTIVE]: Auto-skipping confirmation for "${question}".`);
+    return false;
+  }
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise(resolve => {
+    const timer = setTimeout(() => {
+      try { rl.close(); } catch (_) {}
+      console.log("\n⚠️ [CONFIRMATION TIMEOUT]: Auto-rejected after 30s in unattended mode.");
+      resolve(false);
+    }, 30000);
     rl.question(`\n⚠️ [CONFIRMATION REQUIRED]: ${question} (y/N): `, answer => {
-      rl.close();
+      clearTimeout(timer);
+      try { rl.close(); } catch (_) {}
       resolve(answer.trim().toLowerCase() === "y");
     });
   });
@@ -1166,8 +1175,17 @@ async function runSubtaskToCompletionInner(subtask, controlOptions, parentGoal =
     }
 
     const verdict = await criticStep(subtask, result);
-    console.log(`  [Subtask ${subtask.id}] attempt ${attempts} -> ${verdict.pass ? "PASS" : "FAIL"}`);
+    console.log(`  [Subtask ${subtask.id}] attempt ${attempts} -> ${verdict.pass ? "PASS" : verdict.uncertain ? "UNCERTAIN" : "FAIL"}`);
     if (verdict.pass) { await saveSkill(subtask, result); return { success: true, result }; }
+
+    if (verdict.uncertain && process.env.NON_INTERACTIVE !== "true" && process.stdin.isTTY) {
+      console.log(`  [CRITIC UNCERTAIN] Confidence: ${(verdict.confidence * 100).toFixed(0)}%. Requesting human review...`);
+      const humanApproved = await askHumanConfirmation(`Subtask ${subtask.id} result is uncertain (${(verdict.confidence * 100).toFixed(0)}% confidence). Accept output?`);
+      if (humanApproved) {
+        await saveSkill(subtask, result);
+        return { success: true, result };
+      }
+    }
 
     if (verdict.feedback === lastVerdictFeedback && attempts >= 2) {
       console.warn("  [SAME-CRITIC ERROR] Critic returned identical feedback twice. Triggering rapid RCA.");
@@ -1318,15 +1336,20 @@ module.exports = {
 
 if (require.main === module) {
   (async () => {
-    const goal = process.argv[2] || "Create a simple portfolio website with HTML, CSS, and JS in a folder named my-portfolio";
-    console.log("\n========================================================");
-    console.log("AUTONOMOUS AGENT v7 (Universal Free Multi-Provider Edition)");
-    console.log("========================================================");
-    console.log(`Goal: ${goal}`);
-    console.log(`Provider: ${detectProvider().toUpperCase()}`);
-    console.log(`Freeze: ${FREEZE_DIR || "(none)"}\n`);
-    const result = await runAgent(goal);
-    console.log("\n=== FINAL RESULT ===");
-    console.log(result);
+    try {
+      const goal = process.argv[2] || "Create a simple portfolio website with HTML, CSS, and JS in a folder named my-portfolio";
+      console.log("\n========================================================");
+      console.log("AUTONOMOUS AGENT v7 (Universal Free Multi-Provider Edition)");
+      console.log("========================================================");
+      console.log(`Goal: ${goal}`);
+      console.log(`Provider: ${detectProvider().toUpperCase()}`);
+      console.log(`Freeze: ${FREEZE_DIR || "(none)"}\n`);
+      const result = await runAgent(goal);
+      console.log("\n=== FINAL RESULT ===");
+      console.log(result);
+    } catch (cliErr) {
+      console.error("\n❌ [CLI PROCESS ERROR]:", cliErr.message);
+      process.exitCode = 1;
+    }
   })();
 }

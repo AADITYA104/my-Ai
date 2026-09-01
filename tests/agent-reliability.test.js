@@ -114,6 +114,10 @@ runTest("6. RAG Engine should rank relevant documents higher with BM25 hybrid se
   const results = ragMemory.search("prisma postgres migrations");
   assert.ok(results.length > 0, "Must return search results");
   assert.strictEqual(results[0].topic, "Database Migration Guide", "Top result must match search query");
+
+  // Clean up test data so production memory is not polluted
+  ragMemory.delete("Database Migration Guide");
+  ragMemory.delete("Frontend Styling Rules");
 });
 
 // 7. Multi-Agent Typed Handoff Envelope

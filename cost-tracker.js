@@ -24,11 +24,12 @@ function ratesFor(modelUsed) {
   return PRICING[key] || { in: 0, out: 0 };
 }
 
-function recordUsage({ modelUsed, inputTokens = 0, outputTokens = 0, taskType = "general" }) {
+function recordUsage({ userId = "default_user", modelUsed, inputTokens = 0, outputTokens = 0, taskType = "general" }) {
   const rates = ratesFor(modelUsed || "");
   const costUSD = (inputTokens / 1_000_000) * rates.in + (outputTokens / 1_000_000) * rates.out;
   const entry = {
     ts: new Date().toISOString(),
+    userId: userId || "default_user",
     modelUsed: modelUsed || "unknown",
     inputTokens, outputTokens,
     costUSD: Number(costUSD.toFixed(6)),
@@ -44,7 +45,7 @@ function recordUsage({ modelUsed, inputTokens = 0, outputTokens = 0, taskType = 
 
 function getCostReport(period = "today") {
   if (!fs.existsSync(LOG_PATH)) {
-    return { period, totalCostUSD: 0, totalInputTokens: 0, totalOutputTokens: 0, byModel: {}, entries: 0 };
+    return { period, totalCostUSD: 0, totalInputTokens: 0, totalOutputTokens: 0, byModel: {}, byUser: {}, entries: 0 };
   }
   const lines = fs.readFileSync(LOG_PATH, "utf-8").trim().split("\n").filter(Boolean);
   const now = new Date();
@@ -55,6 +56,7 @@ function getCostReport(period = "today") {
     new Date(0);
 
   const byModel = {};
+  const byUser = {};
   let totalCostUSD = 0, totalInputTokens = 0, totalOutputTokens = 0, entries = 0;
   for (const line of lines) {
     let e;
@@ -67,8 +69,13 @@ function getCostReport(period = "today") {
     byModel[e.modelUsed] = byModel[e.modelUsed] || { costUSD: 0, calls: 0 };
     byModel[e.modelUsed].costUSD += e.costUSD;
     byModel[e.modelUsed].calls += 1;
+
+    const u = e.userId || "default_user";
+    byUser[u] = byUser[u] || { costUSD: 0, calls: 0 };
+    byUser[u].costUSD += e.costUSD;
+    byUser[u].calls += 1;
   }
-  return { period, totalCostUSD: Number(totalCostUSD.toFixed(4)), totalInputTokens, totalOutputTokens, byModel, entries };
+  return { period, totalCostUSD: Number(totalCostUSD.toFixed(4)), totalInputTokens, totalOutputTokens, byModel, byUser, entries };
 }
 
 function checkBudget() {
