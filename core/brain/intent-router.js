@@ -21,6 +21,36 @@ const INTENT_PATTERNS = [
     ]
   },
   {
+    intent: "deep_reasoning_task",
+    patterns: [
+      /deep\s*thinking|vichar|vichari\s*ne|tree\s*of\s*thought|tot|complex\s*problem|architecture\s*plan|logic|step\s*by\s*step\s*analysis|proof|math\s*problem|optimize\s*algorithm/i
+    ]
+  },
+  {
+    intent: "coding_mission",
+    patterns: [
+      /banav|banavi\s*aapo|create\s*website|build\s*app|write\s*code|refactor|debug|fix\s*code|generate\s*program|html|css|javascript|python|frontend|backend/i
+    ]
+  },
+  {
+    intent: "multi_agent_swarm",
+    patterns: [
+      /multi\s*agent|crew|debate|specialist\s*team|architect\s*and\s*coder|group\s*chat|swarm/i
+    ]
+  },
+  {
+    intent: "design_audit_intent",
+    patterns: [
+      /design\s*audit|ui\s*audit|ux\s*check|check\s*layout|accessibility\s*check|impeccable/i
+    ]
+  },
+  {
+    intent: "research_investigation",
+    patterns: [
+      /research|investigate|compare|deep\s*dive|market\s*analysis|literature\s*search|study/i
+    ]
+  },
+  {
     intent: "smart_home",
     patterns: [
       /light|બત્તી|લાઇટ|ac|air\s*conditioner|fan|thermostat|temperature|lamp|switch/i

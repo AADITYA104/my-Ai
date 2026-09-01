@@ -19,9 +19,16 @@ const communicationSuite = require("../../tools/communication");
 const { fullStop, setTemporaryMute, isStopped } = require("../security/full-stop");
 const { isOnline, ollamaFallback } = require("../utils/helpers");
 const { speak } = require("../tts/speak");
+const { solveWithTreeOfThought } = require("../../tree-of-thought");
+const { solveWithCritic } = require("../../advanced-reasoning-agent");
+const { runHierarchicalCrew, runDebateGroupChat } = require("../../multi-agent-system");
+const airllmOptimizer = require("../../airllm-optimizer");
+const intelligenceLoop = require("../../intelligence-loop");
+const todoManager = require("../../todo-manager");
+const { sessionStore } = require("../../session-store");
 
 /**
- * Main Brain dispatcher
+ * Supercharged Cognitive Brain Dispatcher
  */
 async function sendToBrain(userText, options = {}) {
   if (isStopped()) {
@@ -33,9 +40,9 @@ async function sendToBrain(userText, options = {}) {
     return { reply: "Yes Boss, I am listening." };
   }
 
-  // 1. Intent Detection
+  // 1. Cognitive Intent Detection
   const intent = await routeIntent(text);
-  console.log(`🧠 [BRAIN] User: "${text}" | Intent: ${intent}`);
+  console.log(`🧠 [SUPERCHARGED BRAIN] User: "${text}" | Intent: ${intent}`);
 
   // 2. Fast-Path System & Stop Commands
   if (intent === "stop_command") {
@@ -97,13 +104,47 @@ async function sendToBrain(userText, options = {}) {
     return { reply, vision: ocrRes };
   }
 
-  // 3. RAG Memory Context Retrieval & Executive Plan Grounding
-  const ragContext = await ragMemory.buildRagContext(text, 2);
-  const todoManager = require("../../todo-manager");
-  const { sessionStore } = require("../../session-store");
+  // 3. Deep Cognitive Specialization (ToT / Multi-Agent Swarm)
+  if (intent === "deep_reasoning_task") {
+    console.log("⚡ [COGNITIVE CORE] Running Tree-of-Thought with Adversarial Scoring...");
+    const totResult = await solveWithTreeOfThought(text);
+    let reply = totResult.finalSolution || "Yes Boss, analysis complete.";
+    if (!/boss/i.test(reply)) reply = `Boss, ${reply}`;
+    if (options.shouldSpeak !== false) await speak("Boss, I have performed deep architectural reasoning and selected the optimal solution.");
+    return { reply, totResult, intent };
+  }
+
+  if (intent === "multi_agent_swarm") {
+    console.log("👥 [SWARM CORE] Delegating to Hierarchical Multi-Agent Crew...");
+    const crewResult = await runHierarchicalCrew(text, 6);
+    let reply = `Boss, here is the synthesized multi-agent mission outcome:\n\n${crewResult}`;
+    if (options.shouldSpeak !== false) await speak("Boss, the specialist crew has concluded their mission.");
+    return { reply, crewResult, intent };
+  }
+
+  // 4. Grounding: RAG Memory + 880 Skills + Blueprints + Past Lessons
+  const ragContext = await ragMemory.buildRagContext(text, 3);
+  const matchedSkills = skillEngine.routeTask(text, 3);
+  const sysDesign = airllmOptimizer.findSystemDesignBlueprint(text) || [];
+  const byox = airllmOptimizer.findBYOXBlueprint(text) || [];
+  const pastLessons = intelligenceLoop.retrieveLessons(text, 2);
   const todoPrompt = todoManager.getTodoContextPrompt("voice_session");
 
-  // 4. Check Connectivity & Route LLM
+  let knowledgeGrounding = "";
+  if (matchedSkills.length > 0) {
+    knowledgeGrounding += `\n[RELEVANT SKILLS]: ${matchedSkills.map(s => s.name).join(", ")}`;
+  }
+  if (sysDesign.length > 0) {
+    knowledgeGrounding += `\n[SYSTEM DESIGN VAULT]: ${sysDesign.map(s => s.topic).join(", ")}`;
+  }
+  if (byox.length > 0) {
+    knowledgeGrounding += `\n[BYOX BLUEPRINT]: ${byox.map(b => b.target).join(", ")}`;
+  }
+  if (pastLessons.length > 0) {
+    knowledgeGrounding += `\n[HISTORICAL LESSONS]: ${pastLessons.map(l => l.content).join(" | ")}`;
+  }
+
+  // 5. LLM Reasoning Call
   const online = await isOnline();
   let reply = "";
 
@@ -112,18 +153,19 @@ async function sendToBrain(userText, options = {}) {
     reply = await ollamaFallback(text);
   } else {
     try {
-      const systemPrompt = `You are ULTRON, the supreme autonomous AI assistant and personal engineering core to Boss.
+      const systemPrompt = `You are ULTRON, the supreme autonomous AI assistant, architect, and sovereign engineering core to Boss.
 Address the user as "Boss" in every reply.
-Match language (Gujarati / English / Hindi).
-Be concise, intelligent, and decisive.
+Supreme Multi-lingual Fluency: Natural Gujarati (ગુજરાતી), Hindi (हिन्दी), and English.
+Be sharp, protective, highly capable, and definitive.
 ${ragContext ? `\nMemory context:\n${ragContext}` : ""}
+${knowledgeGrounding}
 ${todoPrompt}`;
 
       const messages = [{ role: "user", content: text }];
       const llmRes = await callUniversalLLM(messages, systemPrompt, null);
       const blocks = llmRes.content || [];
       const textBlock = blocks.find(b => b.type === "text");
-      reply = textBlock ? textBlock.text : "Yes Boss, command received.";
+      reply = textBlock ? textBlock.text : "Yes Boss, command processed.";
     } catch (llmErr) {
       console.warn(`[CLOUD LLM ERROR] ${llmErr.message}. Falling back to local Ollama.`);
       reply = await ollamaFallback(text);
@@ -134,19 +176,20 @@ ${todoPrompt}`;
     reply = `Boss, ${reply}`;
   }
 
-  // 5. Speak Output if requested
+  // 6. Speak Output if requested
   if (options.shouldSpeak !== false) {
     await speak(reply);
   }
 
-  // 6. Store turn into SQLite Session Store & RAG memory
+  // 7. Store turn into SQLite Session Store & RAG memory & Intelligence Loop
   try {
     sessionStore.logEvent("voice_session", { role: "user", content: text });
     sessionStore.logEvent("voice_session", { role: "assistant", content: reply });
     ragMemory.rememberConversationTurn(`Boss: ${text}\nUltron: ${reply}`);
+    intelligenceLoop.learnFromOutcome(text, reply, true);
   } catch (_) {}
 
-  return { reply, intent, online };
+  return { reply, intent, online, matchedSkills };
 }
 
 module.exports = {
