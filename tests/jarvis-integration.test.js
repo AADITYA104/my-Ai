@@ -1,7 +1,7 @@
 "use strict";
 
 const assert = require("assert");
-const { runJarvisAgent } = require("../agent-core/jarvis-agent");
+const { runJarvisAgent, buildPlannerSystem, normalizeAvailableTools } = require("../agent-core/jarvis-agent");
 const { executeWithPolicy, registry, isServerAutoApprovalEnabled, adaptLegacyToolInput, resolveWorkspacePath } = require("../agent-core/jarvis-server");
 const { AgentLoopGuard } = require("../agent-loop-guard");
 
@@ -26,6 +26,21 @@ const { AgentLoopGuard } = require("../agent-loop-guard");
   assert.strictEqual(registry.has("run_command"), true);
   assert.strictEqual(registry.has("run_code"), true);
   assert.strictEqual(registry.has("list_directory"), true);
+
+  const normalizedTools = normalizeAvailableTools([
+    "read_file",
+    { name: "run_command", description: "Execute a governed command" },
+    { invalid: true }
+  ]);
+  assert.deepStrictEqual(normalizedTools, [
+    { name: "read_file", description: "" },
+    { name: "run_command", description: "Execute a governed command" }
+  ]);
+  const plannerContract = buildPlannerSystem(normalizedTools);
+  assert.match(plannerContract, /AVAILABLE TOOLS/);
+  assert.match(plannerContract, /read_file/);
+  assert.match(plannerContract, /run_command/);
+  assert.match(plannerContract, /never invent a tool name/i);
 
   const readAdapter = adaptLegacyToolInput("read_file", { file_path: "package.json" });
   assert.strictEqual(readAdapter.filePath, "package.json");
