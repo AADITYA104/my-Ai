@@ -2,6 +2,7 @@
 
 const express = require("express");
 const fs = require("fs");
+const path = require("path");
 const { execSync } = require("child_process");
 const { runJarvisAgent, verifyStep, recover } = require("./jarvis-agent");
 const { executeTool } = require("../autonomous-loop-agent-v7-free");
@@ -38,6 +39,17 @@ function adaptLegacyToolInput(name, input) {
   }
 }
 
+function resolveWorkspacePath(inputPath = ".") {
+  const root = path.resolve(process.cwd());
+  const resolved = path.resolve(root, String(inputPath || "."));
+  if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) {
+    const error = new Error("Workspace path escapes the JARVIS workspace.");
+    error.code = "WORKSPACE_ESCAPE";
+    throw error;
+  }
+  return resolved;
+}
+
 for (const name of KNOWN_TOOLS) {
   registry.register({
     name,
@@ -56,7 +68,7 @@ for (const name of KNOWN_TOOLS) {
         });
       }
       if (name === "list_directory") {
-        const dirPath = String(input.dir_path || ".").trim() || ".";
+        const dirPath = resolveWorkspacePath(input.dir_path || ".");
         return fs.readdirSync(dirPath, { withFileTypes: true }).map((entry) => ({
           name: entry.name,
           type: entry.isDirectory() ? "directory" : entry.isFile() ? "file" : "other"
@@ -188,4 +200,4 @@ function startServer(port = PORT, host = HOST) {
 
 if (require.main === module) startServer();
 
-module.exports = { app, startServer, executeWithPolicy, registry, isServerAutoApprovalEnabled, taskStore, adaptLegacyToolInput };
+module.exports = { app, startServer, executeWithPolicy, registry, isServerAutoApprovalEnabled, taskStore, adaptLegacyToolInput, resolveWorkspacePath };
