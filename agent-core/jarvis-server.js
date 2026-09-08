@@ -1,6 +1,7 @@
 "use strict";
 
 const express = require("express");
+const fs = require("fs");
 const { execSync } = require("child_process");
 const { runJarvisAgent, verifyStep, recover } = require("./jarvis-agent");
 const { executeTool } = require("../autonomous-loop-agent-v7-free");
@@ -24,6 +25,19 @@ const KNOWN_TOOLS = [
   "hierarchical_crew", "debate_group_chat", "invoke_specialist_agent", "generate_3d_model"
 ];
 
+function adaptLegacyToolInput(name, input) {
+  const value = input && typeof input === "object" ? input : {};
+  switch (name) {
+    case "read_file":
+    case "write_file":
+      return { ...value, filePath: value.file_path ?? value.filePath };
+    case "run_code":
+      return { ...value, language: value.language || "javascript", code: value.code };
+    default:
+      return value;
+  }
+}
+
 for (const name of KNOWN_TOOLS) {
   registry.register({
     name,
@@ -41,7 +55,17 @@ for (const name of KNOWN_TOOLS) {
           stdio: ["ignore", "pipe", "pipe"]
         });
       }
-      return executeTool(name, input);
+      if (name === "list_directory") {
+        const dirPath = String(input.dir_path || ".").trim() || ".";
+        return fs.readdirSync(dirPath, { withFileTypes: true }).map((entry) => ({
+          name: entry.name,
+          type: entry.isDirectory() ? "directory" : entry.isFile() ? "file" : "other"
+        }));
+      }
+      if (name === "run_code") {
+        return executeTool("code_exec", adaptLegacyToolInput(name, input));
+      }
+      return executeTool(name, adaptLegacyToolInput(name, input));
     }
   });
 }
@@ -164,4 +188,4 @@ function startServer(port = PORT, host = HOST) {
 
 if (require.main === module) startServer();
 
-module.exports = { app, startServer, executeWithPolicy, registry, isServerAutoApprovalEnabled, taskStore };
+module.exports = { app, startServer, executeWithPolicy, registry, isServerAutoApprovalEnabled, taskStore, adaptLegacyToolInput };
