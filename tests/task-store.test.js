@@ -35,9 +35,12 @@ try {
   const claimed = store.claimOperation("task-1", "session-a", operationId, { executionId: "exec-1" });
   assert.strictEqual(claimed.state, "started");
   assert.strictEqual(claimed.executionId, "exec-1");
+  assert.strictEqual(claimed.claimed, true);
 
   const duplicateClaim = store.claimOperation("task-1", "session-a", operationId, { executionId: "exec-2" });
-  assert.deepStrictEqual(duplicateClaim, claimed);
+  assert.strictEqual(duplicateClaim.state, "started");
+  assert.strictEqual(duplicateClaim.executionId, "exec-1");
+  assert.strictEqual(duplicateClaim.claimed, false);
 
   const completed = store.completeOperation("task-1", "session-a", operationId, { sideEffect: "created-once" });
   assert.strictEqual(completed.state, "completed");
@@ -45,7 +48,9 @@ try {
   assert.deepStrictEqual(completed.result, { sideEffect: "created-once" });
 
   const duplicateCompletion = store.completeOperation("task-1", "session-a", operationId, { sideEffect: "should-not-overwrite" });
-  assert.deepStrictEqual(duplicateCompletion, completed);
+  assert.strictEqual(duplicateCompletion.state, "completed");
+  assert.strictEqual(duplicateCompletion.executionId, "exec-1");
+  assert.deepStrictEqual(duplicateCompletion.result, { sideEffect: "created-once" });
 
   const restoredWithOperation = store.load("task-1", "session-a");
   assert.strictEqual(restoredWithOperation.operations[operationId].state, "completed");
