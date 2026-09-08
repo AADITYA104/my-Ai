@@ -1,7 +1,11 @@
 "use strict";
 
 const assert = require("assert");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 const { AutonomousOrchestrator, normalizePlan } = require("../agent-core/autonomous-orchestrator");
+const { TaskStore } = require("../agent-core/task-store");
 
 assert.deepEqual(normalizePlan({ goal: "x", steps: [{ task: "one", successCriteria: "ok" }] }, "fallback").steps[0], {
   id: 1,
@@ -116,6 +120,45 @@ assert.deepEqual(normalizePlan({ steps: [{ description: "write", tool: "write_fi
   assert.equal(finalVerifierFailureResult.success, false);
   assert.equal(finalVerifierFailureResult.state, "failed");
   assert.match(finalVerifierFailureResult.reason, /final verifier boom/);
+
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "jarvis-resume-"));
+  try {
+    const taskStore = new TaskStore({ root: tempRoot });
+    let step2ShouldFail = true;
+    let resumeExecutions = [];
+    const resumable = new AutonomousOrchestrator({
+      taskStore,
+      limits: { maxSteps: 10, maxToolCalls: 10, maxRetries: 1, maxWallTimeMs: 5000 },
+      planner: async () => ({ steps: [
+        { id: 1, description: "persisted step", doneWhen: "done" },
+        { id: 2, description: "interrupted step", doneWhen: "done" }
+      ] }),
+      executor: async (step) => {
+        resumeExecutions.push(step.id);
+        if (step.id === 2 && step2ShouldFail) throw new Error("simulated interruption");
+        return `step-${step.id}-ok`;
+      },
+      verifier: async (step, result) => step.id === "final"
+        ? { pass: result.length === 2, reason: "all persisted results present" }
+        : { pass: true, result }
+    });
+
+    const interrupted = await resumable.run("resume me", { sessionId: "resume-session", taskId: "resume-task" });
+    assert.equal(interrupted.success, false);
+    assert.equal(interrupted.state, "failed");
+    assert.equal(interrupted.results.length, 1);
+    assert.deepEqual(resumeExecutions, [1, 2]);
+    assert.ok(taskStore.load("resume-task", "resume-session"));
+
+    step2ShouldFail = false;
+    const resumed = await resumable.resume("resume-task", "resume-session");
+    assert.equal(resumed.success, true);
+    assert.equal(resumed.state, "completed");
+    assert.equal(resumed.results.length, 2);
+    assert.deepEqual(resumeExecutions, [1, 2, 2]);
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
 
   console.log("autonomous orchestrator tests: PASS");
 })().catch(error => {
