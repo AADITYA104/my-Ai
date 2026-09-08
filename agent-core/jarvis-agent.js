@@ -22,7 +22,8 @@ async function createPlan(goal, context = {}) {
     "Create a minimal, ordered, independently verifiable execution plan.",
     "Never invent tool results or claim an action was performed.",
     "Prefer 1-6 concrete steps.",
-    "Return ONLY JSON: {\"goal\":string,\"assumptions\":string[],\"steps\":[{\"id\":number,\"description\":string,\"doneWhen\":string,\"tool\":string|null,\"risk\":\"low\"|\"normal\"|\"high\"}]}"
+    "For tool steps, include an exact JSON object in input using only the tool's documented input fields.",
+    "Return ONLY JSON: {\"goal\":string,\"assumptions\":string[],\"steps\":[{\"id\":number,\"description\":string,\"doneWhen\":string,\"tool\":string|null,\"input\":object,\"risk\":\"low\"|\"normal\"|\"high\"}]}"
   ].join(" ");
   return parseJson(await askModel([{ role: "user", content: `Goal: ${goal}\nContext: ${JSON.stringify(context)}` }], system));
 }
@@ -38,11 +39,23 @@ async function verifyStep(step, result) {
 }
 
 async function recover(step, result, verification) {
-  const system = "You are a recovery planner. Diagnose the failed execution and propose the next concrete attempt. Return ONLY JSON: {\"strategy\":string,\"constraints\":string[],\"change\":string}. Do not claim the fix was performed.";
+  const system = [
+    "You are a recovery planner.",
+    "Diagnose the failed execution and propose the next concrete attempt.",
+    "Return ONLY JSON: {\"strategy\":string,\"constraints\":string[],\"change\":string,\"toolInputPatch\":object}",
+    "toolInputPatch must contain only fields that should change in the next tool invocation; use {} when no input change is needed.",
+    "Do not claim the fix was performed."
+  ].join(" ");
   return parseJson(await askModel([{
     role: "user",
-    content: `Step: ${step.description}\nPrevious result: ${String(result)}\nVerification: ${JSON.stringify(verification)}`
+    content: `Step: ${step.description}\nCurrent tool input: ${JSON.stringify(step.input || {})}\nPrevious result: ${String(result)}\nVerification: ${JSON.stringify(verification)}`
   }], system));
+}
+
+function mergeToolInput(base, recoveryContext) {
+  const patch = recoveryContext && recoveryContext.toolInputPatch;
+  if (!patch || typeof patch !== "object" || Array.isArray(patch)) return { ...base };
+  return { ...base, ...patch };
 }
 
 async function runJarvisAgent(goal, context = {}) {
@@ -57,7 +70,7 @@ async function runJarvisAgent(goal, context = {}) {
           content: `Execute this reasoning-only step and return the concrete result:\n${step.description}\nSuccess criteria: ${step.doneWhen}`
         }], "Act as an execution specialist. Do not claim external side effects unless a tool actually performs them.");
       }
-      const toolInput = executionContext.recoveryContext?.toolInput || context.toolInput || {};
+      const toolInput = mergeToolInput(step.input || context.toolInput || {}, executionContext.recoveryContext);
       return executeTool(toolName, toolInput);
     },
     verifier: verifyStep,
@@ -67,4 +80,4 @@ async function runJarvisAgent(goal, context = {}) {
   return orchestrator.run(goal, context);
 }
 
-module.exports = { runJarvisAgent, createPlan, verifyStep, recover };
+module.exports = { runJarvisAgent, createPlan, verifyStep, recover, mergeToolInput };
