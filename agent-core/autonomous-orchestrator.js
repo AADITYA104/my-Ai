@@ -12,7 +12,8 @@ const NON_RETRYABLE_ERROR_CODES = new Set([
   "WORKSPACE_ESCAPE",
   "TASK_NOT_FOUND",
   "TASK_NOT_RESUMABLE",
-  "WALL_TIME_EXHAUSTED"
+  "WALL_TIME_EXHAUSTED",
+  "OPERATION_IN_DOUBT"
 ]);
 
 function isRetryableError(error) {
@@ -22,6 +23,11 @@ function isRetryableError(error) {
 
 function createOperationId(sessionId, taskId, stepId, attempt, phase = "execute") {
   const material = [sessionId, taskId, stepId, attempt, phase].map(value => String(value)).join("\0");
+  return crypto.createHash("sha256").update(material).digest("hex").slice(0, 32);
+}
+
+function createIdempotencyKey(sessionId, taskId, stepId, phase = "execute") {
+  const material = [sessionId, taskId, stepId, phase].map(value => String(value)).join("\0");
   return crypto.createHash("sha256").update(material).digest("hex").slice(0, 32);
 }
 
@@ -193,6 +199,7 @@ class AutonomousOrchestrator {
       let lastVerification = null;
       let recoveryContext = null;
       let stepFinished = false;
+      const idempotencyKey = createIdempotencyKey(sessionId, task.id, step.id, "execute");
 
       while (attempts < maxRetries) {
         if (Date.now() >= deadline) {
@@ -206,20 +213,36 @@ class AutonomousOrchestrator {
         attempts += 1;
         task = { ...task, step: task.step + 1, toolCalls: task.toolCalls + (step.tool ? 1 : 0) };
         const executionId = createOperationId(sessionId, task.id, step.id, attempts, "execute");
-        const operationContext = { executionId, operationId: executionId };
+        const operationContext = { executionId, operationId: executionId, idempotencyKey };
         this.persist(task, sessionId, plan, results);
 
         try {
-          stepResult = await withDeadline(() => this.executor(step, {
-            goal,
-            plan,
-            attempt: attempts,
-            recoveryContext,
-            task,
-            deadline,
-            ...context,
-            ...operationContext
-          }), deadline, `step ${step.id} execution`);
+          let claimedOperation = null;
+          if (this.taskStore) {
+            claimedOperation = this.taskStore.claimOperation(task.id, sessionId, idempotencyKey, { executionId });
+            if (claimedOperation.state === "started" && claimedOperation.executionId !== executionId) {
+              const error = new Error(`Operation ${idempotencyKey} is in an indeterminate state and cannot be safely retried.`);
+              error.code = "OPERATION_IN_DOUBT";
+              throw error;
+            }
+          }
+
+          if (claimedOperation?.state === "completed") {
+            stepResult = claimedOperation.result;
+          } else {
+            stepResult = await withDeadline(() => this.executor(step, {
+              goal,
+              plan,
+              attempt: attempts,
+              recoveryContext,
+              task,
+              deadline,
+              ...context,
+              ...operationContext
+            }), deadline, `step ${step.id} execution`);
+            if (this.taskStore) this.taskStore.completeOperation(task.id, sessionId, idempotencyKey, stepResult);
+          }
+
           task = transition(task, "verifying", `Step ${step.id} execution finished`);
           lastVerification = await withDeadline(() => this.verifier(step, stepResult, {
             goal,
@@ -232,7 +255,7 @@ class AutonomousOrchestrator {
           }), deadline, `step ${step.id} verification`);
           if (lastVerification && lastVerification.pass === true) {
             task = transition(task, "executing", `Step ${step.id} verified`);
-            results.push({ step, attempts, executionId, result: stepResult, verification: lastVerification });
+            results.push({ step, attempts, executionId: claimedOperation?.executionId || executionId, idempotencyKey, result: stepResult, verification: lastVerification });
             completedStepIds.add(step.id);
             this.persist(task, sessionId, plan, results);
             stepFinished = true;
@@ -264,6 +287,11 @@ class AutonomousOrchestrator {
           task = transition(task, "blocked", "Wall-clock budget exhausted");
           this.persist(task, sessionId, plan, results, "Wall-clock budget exhausted");
           return this.snapshot(task, plan, results, "Wall-clock budget exhausted");
+        }
+        if (lastVerification?.code === "OPERATION_IN_DOUBT") {
+          task = transition(task, "blocked", "Operation is in an indeterminate state; automatic retry prevented to avoid duplicate side effects.");
+          this.persist(task, sessionId, plan, results, task.history?.[task.history.length - 1]?.reason || "Operation in doubt");
+          return this.snapshot(task, plan, results, "Operation is in an indeterminate state; automatic retry prevented to avoid duplicate side effects.");
         }
         task = transition(task, "failed", `Step ${step.id} failed after ${attempts} attempt(s)`);
         const reason = lastVerification?.reason || "Step verification failed";
@@ -313,4 +341,4 @@ class AutonomousOrchestrator {
   }
 }
 
-module.exports = { AutonomousOrchestrator, normalizePlan, withDeadline, isRetryableError, createOperationId };
+module.exports = { AutonomousOrchestrator, normalizePlan, withDeadline, isRetryableError, createOperationId, createIdempotencyKey };
