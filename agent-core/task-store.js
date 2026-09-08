@@ -55,6 +55,7 @@ class TaskStore {
     if (!task || !task.id) throw new Error("A valid task is required.");
     return this.withLock(task.id, sessionId, () => {
       const target = this.pathFor(task.id, sessionId);
+      const current = this.load(task.id, sessionId);
       const tmp = `${target}.tmp-${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
       const record = {
         version: 2,
@@ -62,7 +63,7 @@ class TaskStore {
         task,
         plan: snapshot.plan || null,
         results: Array.isArray(snapshot.results) ? snapshot.results : [],
-        operations: snapshot.operations && typeof snapshot.operations === "object" ? snapshot.operations : this.load(task.id, sessionId)?.operations || {},
+        operations: snapshot.operations && typeof snapshot.operations === "object" ? snapshot.operations : current?.operations || {},
         reason: snapshot.reason || null,
         finalVerification: snapshot.finalVerification || null,
         savedAt: new Date().toISOString()
@@ -93,7 +94,7 @@ class TaskStore {
     }
   }
 
-  claimOperation(taskId, sessionId = "default_session", operationId) {
+  claimOperation(taskId, sessionId = "default_session", operationId, metadata = {}) {
     if (!operationId) throw new Error("Operation id is required.");
     return this.withLock(taskId, sessionId, () => {
       const record = this.load(taskId, sessionId);
@@ -102,7 +103,8 @@ class TaskStore {
       if (existing) return { ...existing };
       record.operations[operationId] = {
         state: "started",
-        startedAt: new Date().toISOString()
+        startedAt: new Date().toISOString(),
+        executionId: metadata.executionId || operationId
       };
       this.writeRecord(record, taskId, sessionId);
       return { ...record.operations[operationId] };
@@ -120,6 +122,7 @@ class TaskStore {
         state: "completed",
         startedAt: existing?.startedAt || new Date().toISOString(),
         completedAt: new Date().toISOString(),
+        executionId: existing?.executionId || operationId,
         result
       };
       this.writeRecord(record, taskId, sessionId);
