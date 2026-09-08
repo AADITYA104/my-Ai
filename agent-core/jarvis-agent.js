@@ -17,16 +17,39 @@ function parseJson(text) {
   return JSON.parse(match[0]);
 }
 
-async function createPlan(goal, context = {}) {
-  const system = [
+function normalizeAvailableTools(availableTools) {
+  if (!Array.isArray(availableTools)) return [];
+  return availableTools
+    .map(tool => {
+      if (typeof tool === "string") return { name: tool, description: "" };
+      if (!tool || typeof tool !== "object" || typeof tool.name !== "string") return null;
+      return { name: tool.name, description: typeof tool.description === "string" ? tool.description : "" };
+    })
+    .filter(Boolean);
+}
+
+function buildPlannerSystem(availableTools = []) {
+  const tools = normalizeAvailableTools(availableTools);
+  const toolContract = tools.length
+    ? tools.map(tool => `${tool.name}${tool.description ? `: ${tool.description}` : ""}`).join("\n")
+    : "NO TOOLS AVAILABLE";
+  return [
     "You are the JARVIS planner.",
     "Create a minimal, ordered, independently verifiable execution plan.",
     "Never invent tool results or claim an action was performed.",
     "Prefer 1-6 concrete steps.",
-    "For tool steps, include an exact JSON object in input using only the tool's documented input fields.",
+    "For tool steps, use ONLY a tool listed in AVAILABLE TOOLS and include an exact JSON object in input using only that tool's documented input fields.",
+    "If no suitable tool is listed, use tool:null and make the step reasoning-only; never invent a tool name.",
+    "AVAILABLE TOOLS:",
+    toolContract,
     "Return ONLY JSON: {\"goal\":string,\"assumptions\":string[],\"steps\":[{\"id\":number,\"description\":string,\"doneWhen\":string,\"tool\":string|null,\"input\":object,\"risk\":\"low\"|\"normal\"|\"high\"}] }"
   ].join(" ");
-  return parseJson(await askModel([{ role: "user", content: `Goal: ${goal}\nContext: ${JSON.stringify(context)}` }], system));
+}
+
+async function createPlan(goal, context = {}) {
+  const system = buildPlannerSystem(context.availableTools);
+  const plannerContext = { ...context, availableTools: normalizeAvailableTools(context.availableTools) };
+  return parseJson(await askModel([{ role: "user", content: `Goal: ${goal}\nContext: ${JSON.stringify(plannerContext)}` }], system));
 }
 
 async function verifyStep(step, result) {
@@ -53,7 +76,7 @@ async function recover(step, result, verification) {
   return parseJson(await askModel([{
     role: "user",
     content: `Step: ${step.description}\nCurrent tool input: ${JSON.stringify(step.input || {})}\nPrevious result: ${String(result)}\nVerification: ${JSON.stringify(verification)}`
-  }], system));
+  }], system);
 }
 
 function mergeToolInput(base, recoveryContext) {
@@ -105,6 +128,8 @@ async function runJarvisAgent(goal, context = {}) {
 module.exports = {
   runJarvisAgent,
   createPlan,
+  buildPlannerSystem,
+  normalizeAvailableTools,
   verifyStep,
   recover,
   mergeToolInput,
