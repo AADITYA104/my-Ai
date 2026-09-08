@@ -1,7 +1,7 @@
 "use strict";
 
 const { callUniversalLLM } = require("../llm-providers");
-const { executeTool, criticStep } = require("../autonomous-loop-agent-v7-free");
+const { criticStep } = require("../autonomous-loop-agent-v7-free");
 const { AutonomousOrchestrator } = require("./autonomous-orchestrator");
 
 async function askModel(messages, system) {
@@ -68,11 +68,13 @@ async function runJarvisAgent(goal, context = {}) {
         content: `Execute this reasoning-only step and return the concrete result:\n${step.description}\nSuccess criteria: ${step.doneWhen}`
       }], "Act as an execution specialist. Do not claim external side effects unless a tool actually performs them.");
     }
-    const toolInput = mergeToolInput(step.input || context.toolInput || {}, executionContext.recoveryContext);
-    if (context.registry && typeof context.registry.execute === "function") {
-      return context.registry.execute(toolName, toolInput, context);
+    if (!context.registry || typeof context.registry.execute !== "function") {
+      const error = new Error("Governed tool registry is required for tool execution.");
+      error.code = "REGISTRY_REQUIRED";
+      throw error;
     }
-    return executeTool(toolName, toolInput);
+    const toolInput = mergeToolInput(step.input || context.toolInput || {}, executionContext.recoveryContext);
+    return context.registry.execute(toolName, toolInput, context);
   });
   const verifier = context.verifier || verifyStep;
   const recovery = context.recovery || recover;
