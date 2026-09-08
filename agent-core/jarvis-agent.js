@@ -53,7 +53,7 @@ async function recover(step, result, verification) {
   return parseJson(await askModel([{
     role: "user",
     content: `Step: ${step.description}\nCurrent tool input: ${JSON.stringify(step.input || {})}\nPrevious result: ${String(result)}\nVerification: ${JSON.stringify(verification)}`
-  }], system);
+  }], system));
 }
 
 function mergeToolInput(base, recoveryContext) {
@@ -78,13 +78,11 @@ async function runJarvisAgent(goal, context = {}) {
         "Act as an execution specialist. Do not claim external side effects unless a tool actually performs them."
       );
     }
-
     if (!context.registry || typeof context.registry.execute !== "function") {
       const error = new Error("Governed tool registry is required for tool execution.");
       error.code = "REGISTRY_REQUIRED";
       throw error;
     }
-
     const toolInput = mergeToolInput(
       step.input || context.toolInput || {},
       executionContext && executionContext.recoveryContext
