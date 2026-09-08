@@ -120,8 +120,12 @@ async function executeWithPolicy(step, executionContext = {}) {
 
   const anomaly = loopGuard.checkAnomaly(step.tool, input, policyContext);
   if (anomaly.isLoop) {
-    const error = new Error(anomaly.warning);
-    error.code = anomaly.type === "approval_required" ? "APPROVAL_REQUIRED" : "LOOP_GUARD_BLOCKED";
+    const error = new Error(`🛡️ [AUTONOMY POLICY]: ${anomaly.policy?.reason || anomaly.warning}`);
+    error.code = anomaly.type === "approval_required"
+      ? "APPROVAL_REQUIRED"
+      : anomaly.policy?.reason === "Path is outside the configured workspace."
+        ? "WORKSPACE_ESCAPE"
+        : "LOOP_GUARD_BLOCKED";
     error.policy = anomaly.policy;
     throw error;
   }
