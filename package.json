@@ -7,6 +7,7 @@
         "start": "node ultron-server.js",
         "agent:reasoning": "node advanced-reasoning-agent.js",
         "agent:v7": "node autonomous-loop-agent-v7-free.js",
+        "agent:jarvis": "node agent-core/jarvis-server.js",
         "rag:ingest": "node rag-memory.js ingest",
         "rag:search": "node rag-memory.js search",
         "multi-agent": "node multi-agent-system.js",
@@ -24,6 +25,7 @@
         "postinstall": "node scripts/install-mcp-servers.js",
         "test": "node tests/deep_file_audit.js",
         "test:accuracy": "node tests/accuracy-eval.test.js",
+        "test:jarvis": "node tests/agent-core.test.js && node tests/agent-core-security.test.js && node tests/autonomous-orchestrator.test.js && node tests/jarvis-agent.test.js && node tests/jarvis-integration.test.js",
         "report:metrics": "node scripts/metrics-report.js",
         "check:budget": "node scripts/metrics-report.js --alert"
     },

@@ -5,9 +5,12 @@
  *  - Intercepts identical duplicate tool calls
  *  - Detects repeating error cycles & oscillating patterns (A-B-A-B)
  *  - Injects remedial strategy hints before agent gets stuck
+ *  - Enforces the central autonomy policy before a tool can execute
  * ============================================================================
  */
 "use strict";
+
+const { evaluateToolCall } = require("./agent-core/autonomy-policy");
 
 const MAX_HISTORY_WINDOW = 12;
 const MAX_IDENTICAL_CALLS_ALLOWED = 2;
@@ -56,9 +59,21 @@ class AgentLoopGuard {
   }
 
   /**
-   * Evaluates whether a proposed tool call constitutes a harmful loop
+   * Evaluates whether a proposed tool call is permitted and/or constitutes a harmful loop.
+   * The policy gate runs first so a new tool cannot bypass workspace and command controls
+   * simply because it has not appeared in the loop history yet.
    */
-  checkAnomaly(toolName, args) {
+  checkAnomaly(toolName, args, context = {}) {
+    const policy = evaluateToolCall(toolName, args || {}, context);
+    if (!policy.allowed) {
+      return {
+        isLoop: true,
+        type: policy.requiresApproval ? "approval_required" : "policy_denied",
+        warning: `🛡️ [AUTONOMY POLICY]: ${policy.reason}`,
+        policy
+      };
+    }
+
     const targetFp = this.fingerprint(toolName, args);
 
     if (this.history.length === 0) {

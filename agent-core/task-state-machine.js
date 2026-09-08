@@ -18,7 +18,7 @@ function createTask(goal, metadata = {}) {
     id: metadata.id || `task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     goal: String(goal).trim(), state: "queued", step: 0, toolCalls: 0,
     createdAt: now, updatedAt: now,
-    history: [{ state: "queued", at: now }], metadata, terminal: false
+    history: [{ state: "queued", at: now }], metadata
   };
 }
 
@@ -31,17 +31,12 @@ function transition(task, next, reason = "") {
   return { ...task, state: next, updatedAt: now, history: [...(task.history || []), { state: next, at: now, reason }], terminal: TERMINAL.has(next) };
 }
 
-function positiveLimit(value, fallback) {
-  if (value === undefined || value === null) return fallback;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) throw new Error(`Invalid task budget: ${value}`);
-  return parsed;
-}
-
 function canContinue(task, limits = {}) {
   if (TERMINAL.has(task.state)) return { ok: false, reason: `Task is ${task.state}.` };
-  const maxSteps = positiveLimit(limits.maxSteps, 24);
-  const maxToolCalls = positiveLimit(limits.maxToolCalls, 48);
+  const maxSteps = limits.maxSteps ?? 24;
+  const maxToolCalls = limits.maxToolCalls ?? 48;
+  if (!Number.isFinite(maxSteps) || maxSteps < 0) return { ok: false, reason: "Invalid step budget." };
+  if (!Number.isFinite(maxToolCalls) || maxToolCalls < 0) return { ok: false, reason: "Invalid tool-call budget." };
   if (task.step >= maxSteps) return { ok: false, reason: "Step budget exhausted." };
   if (task.toolCalls >= maxToolCalls) return { ok: false, reason: "Tool-call budget exhausted." };
   return { ok: true };
