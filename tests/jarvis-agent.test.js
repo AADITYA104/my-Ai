@@ -41,7 +41,17 @@ assert.deepEqual(mergeToolInput(base, { toolInputPatch: [] }), base);
   assert.equal(result.success, true);
   assert.equal(result.state, "completed");
   assert.equal(registryCalls, 1);
-  assert.equal(result.results[0], "registry-result");
+  assert.equal(result.results[0].result, "registry-result");
+
+  await assert.rejects(
+    runJarvisAgent("registry is mandatory", {
+      planner: async () => ({
+        steps: [{ id: 1, description: "attempt governed tool", doneWhen: "tool executes", tool: "test_tool", input: {} }]
+      }),
+      verifier: async () => ({ pass: true })
+    }),
+    error => error.code === "REGISTRY_REQUIRED"
+  );
 
   console.log("jarvis agent adapter tests: PASS");
 })().catch(error => {
