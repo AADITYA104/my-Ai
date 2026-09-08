@@ -137,7 +137,7 @@ assert.notEqual(createIdempotencyKey("session-a", "task-a", 1), createIdempotenc
       taskStore,
       limits: { maxSteps: 10, maxToolCalls: 10, maxRetries: 1, maxWallTimeMs: 5000 },
       planner: async () => ({ steps: [{ id: 1, description: "persisted step", doneWhen: "done" }, { id: 2, description: "interrupted step", doneWhen: "done" }] }),
-      executor: async (step, ctx) => { resumeExecutions.push(step.id); observedOperationIds.push({ step: step.id, attempt: ctx.attempt, executionId: ctx.executionId }); if (step.id === 2 && step2ShouldFail) throw new Error("simulated interruption"); return `step-${step.id}-ok`; },
+      executor: async (step, ctx) => { resumeExecutions.push(step.id); observedOperationIds.push({ step: step.id, attempt: ctx.attempt, executionId: ctx.executionId }); if (step.id === 2 && step2ShouldFail) { const error = new Error("simulated interruption"); error.code = "RETRYABLE_EXECUTOR_ERROR"; throw error; } return `step-${step.id}-ok`; },
       verifier: async (step, result) => step.id === "final" ? { pass: result.length === 2, reason: "all persisted results present" } : { pass: true, result }
     });
     const interrupted = await resumable.run("resume me", { sessionId: "resume-session", taskId: "resume-task" });
