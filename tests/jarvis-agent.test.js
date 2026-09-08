@@ -39,15 +39,16 @@ assert.deepEqual(mergeToolInput(base, { toolInputPatch: [] }), base);
   assert.equal(registryCalls, 1);
   assert.equal(result.results[0].result, "registry-result");
 
-  await assert.rejects(
-    runJarvisAgent("registry is mandatory", {
-      planner: async () => ({
-        steps: [{ id: 1, description: "attempt governed tool", doneWhen: "tool executes", tool: "test_tool", input: {} }]
-      }),
-      verifier: async () => ({ pass: true })
+  const missingRegistry = await runJarvisAgent("registry is mandatory", {
+    planner: async () => ({
+      steps: [{ id: 1, description: "attempt governed tool", doneWhen: "tool executes", tool: "test_tool", input: {} }]
     }),
-    error => error.code === "REGISTRY_REQUIRED"
-  );
+    verifier: async () => ({ pass: true })
+  });
+
+  assert.equal(missingRegistry.success, false);
+  assert.equal(missingRegistry.state, "failed");
+  assert.equal(missingRegistry.reason, "Governed tool registry is required for tool execution.");
 
   console.log("jarvis agent adapter tests: PASS");
 })().catch(error => {
