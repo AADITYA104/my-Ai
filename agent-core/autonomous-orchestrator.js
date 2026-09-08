@@ -98,28 +98,21 @@ class AutonomousOrchestrator {
 
   async run(goal, context = {}) {
     const resumeTaskId = context.resumeTaskId || context.resumeTask;
-    if (resumeTaskId && this.taskStore) {
-      return this.resume(resumeTaskId, context.sessionId || "default_session", context);
-    }
-
+    if (resumeTaskId && this.taskStore) return this.resume(resumeTaskId, context.sessionId || "default_session", context);
     if (!goal || !String(goal).trim()) throw new Error("Goal is required.");
     if (typeof this.planner !== "function") throw new Error("Planner callback is required.");
     if (typeof this.executor !== "function") throw new Error("Executor callback is required.");
     if (typeof this.verifier !== "function") throw new Error("Verifier callback is required.");
 
     const startedAt = Date.now();
-    const deadline = Number.isFinite(this.limits.maxWallTimeMs) && this.limits.maxWallTimeMs >= 0
-      ? startedAt + this.limits.maxWallTimeMs
-      : Infinity;
+    const deadline = Number.isFinite(this.limits.maxWallTimeMs) && this.limits.maxWallTimeMs >= 0 ? startedAt + this.limits.maxWallTimeMs : Infinity;
     const sessionId = context.sessionId || "default_session";
     let task = createTask(goal, { phase: "planner", startedAt, sessionId: String(sessionId), id: context.taskId });
     let plan;
     this.persist(task, sessionId, null, []);
 
     try {
-      plan = this.plan
-        ? normalizePlan(this.plan, goal)
-        : normalizePlan(await withDeadline(() => this.planner(goal, context), deadline, "planning"), goal);
+      plan = this.plan ? normalizePlan(this.plan, goal) : normalizePlan(await withDeadline(() => this.planner(goal, context), deadline, "planning"), goal);
       task = transition(task, "planning", "Plan created");
       this.persist(task, sessionId, plan, []);
     } catch (error) {
@@ -129,7 +122,6 @@ class AutonomousOrchestrator {
       this.persist(task, sessionId, plan, [], reason);
       return this.snapshot(task, plan, [], reason);
     }
-
     return this.executePlan(goal, sessionId, task, plan, [], context, deadline);
   }
 
@@ -138,24 +130,11 @@ class AutonomousOrchestrator {
     if (!taskId || !String(taskId).trim()) throw new Error("Task id is required for resume.");
     if (typeof this.executor !== "function") throw new Error("Executor callback is required.");
     if (typeof this.verifier !== "function") throw new Error("Verifier callback is required.");
-
     const record = this.taskStore.load(taskId, sessionId);
-    if (!record) {
-      const error = new Error(`Persisted task not found: ${taskId}`);
-      error.code = "TASK_NOT_FOUND";
-      throw error;
-    }
-    if (!record.plan || !Array.isArray(record.plan.steps)) {
-      const error = new Error("Persisted task has no resumable plan.");
-      error.code = "TASK_NOT_RESUMABLE";
-      throw error;
-    }
+    if (!record) { const error = new Error(`Persisted task not found: ${taskId}`); error.code = "TASK_NOT_FOUND"; throw error; }
+    if (!record.plan || !Array.isArray(record.plan.steps)) { const error = new Error("Persisted task has no resumable plan."); error.code = "TASK_NOT_RESUMABLE"; throw error; }
     if (record.task.state === "completed") return this.snapshot(record.task, record.plan, record.results, record.reason, record.finalVerification);
-    if (record.task.state === "cancelled") {
-      const error = new Error("Cancelled tasks cannot be resumed.");
-      error.code = "TASK_NOT_RESUMABLE";
-      throw error;
-    }
+    if (record.task.state === "cancelled") { const error = new Error("Cancelled tasks cannot be resumed."); error.code = "TASK_NOT_RESUMABLE"; throw error; }
 
     let task = record.task;
     if (isTerminal(task.state)) task = transition(task, "planning", "Resuming persisted task");
@@ -164,10 +143,7 @@ class AutonomousOrchestrator {
     const plan = normalizePlan(record.plan, task.goal);
     const results = Array.isArray(record.results) ? record.results : [];
     const startedAt = Date.now();
-    const deadline = Number.isFinite(this.limits.maxWallTimeMs) && this.limits.maxWallTimeMs >= 0
-      ? startedAt + this.limits.maxWallTimeMs
-      : Infinity;
-
+    const deadline = Number.isFinite(this.limits.maxWallTimeMs) && this.limits.maxWallTimeMs >= 0 ? startedAt + this.limits.maxWallTimeMs : Infinity;
     this.persist(task, sessionId, plan, results, "Resuming persisted task");
     return this.executePlan(task.goal, sessionId, task, plan, results, context, deadline);
   }
@@ -180,13 +156,11 @@ class AutonomousOrchestrator {
 
     for (const step of plan.steps) {
       if (completedStepIds.has(step.id)) continue;
-
       if (Date.now() >= deadline) {
         task = transition(task, "blocked", "Wall-clock budget exhausted");
         this.persist(task, sessionId, plan, results, "Wall-clock budget exhausted");
         return this.snapshot(task, plan, results, "Wall-clock budget exhausted");
       }
-
       const budget = canContinue(task, this.limits);
       if (!budget.ok) {
         task = transition(task, "blocked", budget.reason);
@@ -207,7 +181,6 @@ class AutonomousOrchestrator {
           this.persist(task, sessionId, plan, results, "Wall-clock budget exhausted");
           return this.snapshot(task, plan, results, "Wall-clock budget exhausted");
         }
-
         const nextState = task.state === "planning" || task.state === "verifying" ? "executing" : task.state;
         task = transition(task, nextState, `Executing step ${step.id}`);
         attempts += 1;
@@ -220,7 +193,7 @@ class AutonomousOrchestrator {
           let claimedOperation = null;
           if (this.taskStore) {
             claimedOperation = this.taskStore.claimOperation(task.id, sessionId, idempotencyKey, { executionId });
-            if (claimedOperation.state === "started" && claimedOperation.executionId !== executionId) {
+            if (claimedOperation.state === "started" && !claimedOperation.claimed) {
               const error = new Error(`Operation ${idempotencyKey} is in an indeterminate state and cannot be safely retried.`);
               error.code = "OPERATION_IN_DOUBT";
               throw error;
@@ -231,27 +204,14 @@ class AutonomousOrchestrator {
             stepResult = claimedOperation.result;
           } else {
             stepResult = await withDeadline(() => this.executor(step, {
-              goal,
-              plan,
-              attempt: attempts,
-              recoveryContext,
-              task,
-              deadline,
-              ...context,
-              ...operationContext
+              goal, plan, attempt: attempts, recoveryContext, task, deadline, ...context, ...operationContext
             }), deadline, `step ${step.id} execution`);
             if (this.taskStore) this.taskStore.completeOperation(task.id, sessionId, idempotencyKey, stepResult);
           }
 
           task = transition(task, "verifying", `Step ${step.id} execution finished`);
           lastVerification = await withDeadline(() => this.verifier(step, stepResult, {
-            goal,
-            plan,
-            attempt: attempts,
-            task,
-            deadline,
-            ...context,
-            ...operationContext
+            goal, plan, attempt: attempts, task, deadline, ...context, ...operationContext
           }), deadline, `step ${step.id} verification`);
           if (lastVerification && lastVerification.pass === true) {
             task = transition(task, "executing", `Step ${step.id} verified`);
@@ -289,9 +249,10 @@ class AutonomousOrchestrator {
           return this.snapshot(task, plan, results, "Wall-clock budget exhausted");
         }
         if (lastVerification?.code === "OPERATION_IN_DOUBT") {
-          task = transition(task, "blocked", "Operation is in an indeterminate state; automatic retry prevented to avoid duplicate side effects.");
-          this.persist(task, sessionId, plan, results, task.history?.[task.history.length - 1]?.reason || "Operation in doubt");
-          return this.snapshot(task, plan, results, "Operation is in an indeterminate state; automatic retry prevented to avoid duplicate side effects.");
+          const reason = "Operation is in an indeterminate state; automatic retry prevented to avoid duplicate side effects.";
+          task = transition(task, "blocked", reason);
+          this.persist(task, sessionId, plan, results, reason);
+          return this.snapshot(task, plan, results, reason);
         }
         task = transition(task, "failed", `Step ${step.id} failed after ${attempts} attempt(s)`);
         const reason = lastVerification?.reason || "Step verification failed";
@@ -315,29 +276,19 @@ class AutonomousOrchestrator {
       this.persist(task, sessionId, plan, results, reason);
       return this.snapshot(task, plan, results, reason);
     }
-
     if (!finalVerification || finalVerification.pass !== true) {
       task = transition(task, "failed", "Final verification failed");
       const reason = finalVerification?.reason || "Final verification failed";
       this.persist(task, sessionId, plan, results, reason, finalVerification);
       return this.snapshot(task, plan, results, reason, finalVerification);
     }
-
     task = transition(task, "completed", "Final verification passed");
     this.persist(task, sessionId, plan, results, null, finalVerification);
     return this.snapshot(task, plan, results, null, finalVerification);
   }
 
   snapshot(task, plan, results, reason, finalVerification = null) {
-    return {
-      success: task.state === "completed",
-      state: task.state,
-      task,
-      plan,
-      results,
-      reason: reason || null,
-      finalVerification
-    };
+    return { success: task.state === "completed", state: task.state, task, plan, results, reason: reason || null, finalVerification };
   }
 }
 
