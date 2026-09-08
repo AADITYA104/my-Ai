@@ -2,11 +2,12 @@
 
 const express = require("express");
 const { execSync } = require("child_process");
-const { runJarvisAgent } = require("./jarvis-agent");
+const { runJarvisAgent, verifyStep, recover } = require("./jarvis-agent");
 const { executeTool } = require("../autonomous-loop-agent-v7-free");
 const { ToolRegistry } = require("./tool-registry");
 const { AgentLoopGuard } = require("../agent-loop-guard");
 const { TaskStore } = require("./task-store");
+const { AutonomousOrchestrator } = require("./autonomous-orchestrator");
 
 const app = express();
 const PORT = Number(process.env.JARVIS_PORT || 3010);
@@ -137,14 +138,12 @@ app.post("/api/jarvis/resume", async (req, res) => {
     const autoApprove = req.body.autoApprove === true && isServerAutoApprovalEnabled();
     const loopGuard = new AgentLoopGuard();
     const sessionId = normalizeSessionId(req.body.sessionId);
-    const agentContext = createExecutionContext(autoApprove, loopGuard);
-    const { AutonomousOrchestrator } = require("./autonomous-orchestrator");
     const orchestrator = new AutonomousOrchestrator({
       limits: req.body.limits || {},
       taskStore,
-      executor: agentContext.executor,
-      verifier: req.body.verifier,
-      recovery: req.body.recovery
+      executor: (step, context) => executeWithPolicy(step, { ...context, autoApprove, loopGuard }),
+      verifier: verifyStep,
+      recovery: recover
     });
     const result = await orchestrator.resume(taskId, sessionId, {
       autoApprove,
