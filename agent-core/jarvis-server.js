@@ -28,6 +28,12 @@ for (const name of KNOWN_TOOLS) {
   });
 }
 
+// A client request must never be able to grant itself approval for high-risk work.
+// Auto-approval is an explicit server/operator configuration, not user input.
+function isServerAutoApprovalEnabled() {
+  return process.env.JARVIS_ALLOW_AUTO_APPROVE === "true";
+}
+
 async function executeWithPolicy(step, executionContext = {}) {
   if (!step || typeof step.tool !== "string" || !step.tool.trim()) {
     throw new Error("A valid tool name is required.");
@@ -37,7 +43,7 @@ async function executeWithPolicy(step, executionContext = {}) {
   const policyContext = {
     root: process.cwd(),
     sideEffectClass: step.risk === "high" ? "external_side_effect" : undefined,
-    autoApprove: executionContext.autoApprove === true
+    autoApprove: executionContext.autoApprove === true && isServerAutoApprovalEnabled()
   };
   const loopGuard = executionContext.loopGuard instanceof AgentLoopGuard
     ? executionContext.loopGuard
@@ -75,7 +81,7 @@ app.post("/api/jarvis/run", async (req, res) => {
   if (!goal) return res.status(400).json({ success: false, error: "goal is required" });
 
   try {
-    const autoApprove = req.body.autoApprove === true;
+    const autoApprove = req.body.autoApprove === true && isServerAutoApprovalEnabled();
     const loopGuard = new AgentLoopGuard();
     const result = await runJarvisAgent(goal, {
       sessionId: req.body.sessionId || "default_session",
@@ -97,4 +103,4 @@ function startServer(port = PORT, host = HOST) {
 
 if (require.main === module) startServer();
 
-module.exports = { app, startServer, executeWithPolicy, registry };
+module.exports = { app, startServer, executeWithPolicy, registry, isServerAutoApprovalEnabled };
