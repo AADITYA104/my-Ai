@@ -11,7 +11,8 @@ const NON_RETRYABLE_ERROR_CODES = new Set([
   "INVALID_TOOL_INPUT",
   "WORKSPACE_ESCAPE",
   "TASK_NOT_FOUND",
-  "TASK_NOT_RESUMABLE"
+  "TASK_NOT_RESUMABLE",
+  "WALL_TIME_EXHAUSTED"
 ]);
 
 function isRetryableError(error) {
