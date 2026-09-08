@@ -4,7 +4,7 @@ const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { AutonomousOrchestrator, normalizePlan } = require("../agent-core/autonomous-orchestrator");
+const { AutonomousOrchestrator, normalizePlan, createOperationId } = require("../agent-core/autonomous-orchestrator");
 const { TaskStore } = require("../agent-core/task-store");
 
 assert.deepEqual(normalizePlan({ goal: "x", steps: [{ task: "one", successCriteria: "ok" }] }, "fallback").steps[0], {
@@ -30,6 +30,19 @@ assert.throws(
 );
 
 assert.deepEqual(normalizePlan({ steps: [{ description: "array input", input: ["unsafe"] }] }, "input").steps[0].input, {});
+
+assert.equal(
+  createOperationId("session-a", "task-a", 1, 1),
+  createOperationId("session-a", "task-a", 1, 1)
+);
+assert.notEqual(
+  createOperationId("session-a", "task-a", 1, 1),
+  createOperationId("session-a", "task-a", 1, 2)
+);
+assert.notEqual(
+  createOperationId("session-a", "task-a", 1, 1, "execute"),
+  createOperationId("session-a", "task-a", 1, 1, "recovery")
+);
 
 (async () => {
   let executions = 0;
@@ -61,6 +74,9 @@ assert.deepEqual(normalizePlan({ steps: [{ description: "array input", input: ["
   assert.equal(executions, 3);
   assert.equal(recoveries, 1);
   assert.equal(success.results.length, 2);
+  assert.match(success.results[0].executionId, /^[a-f0-9]{32}$/);
+  assert.match(success.results[1].executionId, /^[a-f0-9]{32}$/);
+  assert.notEqual(success.results[0].executionId, success.results[1].executionId);
 
   const blocked = new AutonomousOrchestrator({
     limits: { maxSteps: 0, maxToolCalls: 10 },
@@ -208,6 +224,7 @@ assert.deepEqual(normalizePlan({ steps: [{ description: "array input", input: ["
     const taskStore = new TaskStore({ root: tempRoot });
     let step2ShouldFail = true;
     let resumeExecutions = [];
+    let observedOperationIds = [];
     const resumable = new AutonomousOrchestrator({
       taskStore,
       limits: { maxSteps: 10, maxToolCalls: 10, maxRetries: 1, maxWallTimeMs: 5000 },
@@ -215,8 +232,9 @@ assert.deepEqual(normalizePlan({ steps: [{ description: "array input", input: ["
         { id: 1, description: "persisted step", doneWhen: "done" },
         { id: 2, description: "interrupted step", doneWhen: "done" }
       ] }),
-      executor: async (step) => {
+      executor: async (step, ctx) => {
         resumeExecutions.push(step.id);
+        observedOperationIds.push({ step: step.id, attempt: ctx.attempt, executionId: ctx.executionId });
         if (step.id === 2 && step2ShouldFail) throw new Error("simulated interruption");
         return `step-${step.id}-ok`;
       },
@@ -238,6 +256,10 @@ assert.deepEqual(normalizePlan({ steps: [{ description: "array input", input: ["
     assert.equal(resumed.state, "completed");
     assert.equal(resumed.results.length, 2);
     assert.deepEqual(resumeExecutions, [1, 2, 2]);
+    assert.equal(observedOperationIds[1].executionId, observedOperationIds[2].executionId);
+    assert.equal(observedOperationIds[1].attempt, 1);
+    assert.equal(observedOperationIds[2].attempt, 1);
+    assert.equal(resumed.results[1].executionId, observedOperationIds[2].executionId);
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }
