@@ -189,8 +189,8 @@ class AutonomousOrchestrator {
         const operationContext = { executionId, operationId: executionId, idempotencyKey };
         this.persist(task, sessionId, plan, results);
 
+        let claimedOperation = null;
         try {
-          let claimedOperation = null;
           if (this.taskStore) {
             claimedOperation = this.taskStore.claimOperation(task.id, sessionId, idempotencyKey, { executionId });
             if (claimedOperation.state === "started" && !claimedOperation.claimed) {
@@ -228,6 +228,11 @@ class AutonomousOrchestrator {
             : { reason: "Verification failed", previousResult: stepResult };
           this.persist(task, sessionId, plan, results, lastVerification?.reason || "Verification failed");
         } catch (error) {
+          if (claimedOperation?.claimed && error.code !== "OPERATION_IN_DOUBT") {
+            const ambiguousError = new Error(`Operation ${idempotencyKey} failed after being claimed; automatic retry is blocked to prevent duplicate side effects.`);
+            ambiguousError.code = "OPERATION_IN_DOUBT";
+            error = ambiguousError;
+          }
           lastVerification = { pass: false, reason: error.message, code: error.code || null };
           if (!isRetryableError(error) || attempts >= maxRetries) break;
           try {
