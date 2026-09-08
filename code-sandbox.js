@@ -16,8 +16,6 @@ const DEFAULT_TIMEOUT_MS = 30000;
 const MAX_TIMEOUT_MS = 60000;
 const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 
-// These capabilities are intentionally not Node modules. Host-side callers
-// may inject policy-checked implementations through options.capabilities.
 const DEFAULT_CAPABILITIES = Object.freeze({
   readFile: async () => ({ success: false, error: "readFile capability is not configured" }),
   writeFile: async () => ({ success: false, error: "writeFile capability is not configured" }),
@@ -43,6 +41,7 @@ const FORBIDDEN_SOURCE = [
   /\bfrom\s+['"]child_process['"]/, 
   /\beval\s*\(/,
   /\bFunction\s*\(/,
+  /\.constructor\s*\(/,
   /\bconstructor\s*\[\s*['"]constructor['"]\s*\]/
 ];
 
@@ -57,7 +56,6 @@ function validateSource(code) {
 function makeWorkerCode() {
   return `
 const { parentPort, workerData } = require("worker_threads");
-
 const logs = [];
 const safeConsole = Object.freeze({
   log: (...args) => logs.push(args.map(String).join(" ")),
@@ -65,10 +63,8 @@ const safeConsole = Object.freeze({
   warn: (...args) => logs.push("[WARN] " + args.map(String).join(" ")),
   error: (...args) => logs.push("[ERROR] " + args.map(String).join(" "))
 });
-
 const pending = new Map();
 let nextRequestId = 1;
-
 function callCapability(name, args) {
   return new Promise((resolve) => {
     const id = nextRequestId++;
@@ -76,27 +72,20 @@ function callCapability(name, args) {
     parentPort.postMessage({ type: "capability", id, name, args });
   });
 }
-
 const tools = Object.freeze({
   readFile: (...args) => callCapability("readFile", args),
   writeFile: (...args) => callCapability("writeFile", args),
   runCommand: (...args) => callCapability("runCommand", args),
   listDirectory: (...args) => callCapability("listDirectory", args)
 });
-
 parentPort.on("message", (message) => {
   if (message && message.type === "capability_result") {
     const resolve = pending.get(message.id);
-    if (resolve) {
-      pending.delete(message.id);
-      resolve(message.value);
-    }
+    if (resolve) { pending.delete(message.id); resolve(message.value); }
   }
 });
-
 (async () => {
   try {
-    // Do not pass fs/path/require/process into the generated function.
     const run = new Function("tools", "console", "return (async () => {\\n" + workerData.code + "\\n})();");
     const result = await run(tools, safeConsole);
     parentPort.postMessage({ type: "result", success: true, result: result === undefined ? null : result, logs: logs.join("\\n") });
@@ -110,12 +99,10 @@ parentPort.on("message", (message) => {
 async function runSandboxedCode(code, options = {}) {
   const validation = validateSource(code);
   if (!validation.allowed) return { success: false, error: validation.reason, logs: "", durationMs: 0 };
-
   const timeoutMs = Math.min(Math.max(options.timeoutMs || DEFAULT_TIMEOUT_MS, 1000), MAX_TIMEOUT_MS);
   const maxHeapMb = Math.min(Math.max(options.maxHeapMb || 256, 64), 512);
   const capabilities = { ...DEFAULT_CAPABILITIES, ...(options.capabilities || {}) };
   const startTime = Date.now();
-
   return new Promise((resolve) => {
     let finished = false;
     const worker = new Worker(makeWorkerCode(), {
@@ -123,7 +110,6 @@ async function runSandboxedCode(code, options = {}) {
       workerData: { code },
       resourceLimits: { maxOldGenerationSizeMb: maxHeapMb, maxYoungGenerationSizeMb: 64 }
     });
-
     const finish = (result) => {
       if (finished) return;
       finished = true;
@@ -131,13 +117,11 @@ async function runSandboxedCode(code, options = {}) {
       worker.terminate().catch(() => {});
       resolve({ ...result, durationMs: Date.now() - startTime });
     };
-
     const timer = setTimeout(() => finish({
       success: false,
       error: `Execution timed out after ${timeoutMs}ms`,
       logs: `[TIMEOUT]: Worker exceeded ${timeoutMs}ms and was terminated.`
     }), timeoutMs);
-
     worker.on("message", async (message) => {
       if (finished) return;
       if (message?.type === "result") {
@@ -158,7 +142,6 @@ async function runSandboxedCode(code, options = {}) {
         }
       }
     });
-
     worker.on("error", (error) => finish({ success: false, error: error.message, logs: `[WORKER ERROR]: ${error.stack || error.message}` }));
     worker.on("exit", (code) => {
       if (!finished && code !== 0) finish({ success: false, error: `Worker exited with non-zero code: ${code}`, logs: "" });
