@@ -3,32 +3,49 @@
 const express = require("express");
 const { runJarvisAgent } = require("./jarvis-agent");
 const { executeTool } = require("../autonomous-loop-agent-v7-free");
-const { evaluateToolCall } = require("./autonomy-policy");
+const { ToolRegistry } = require("./tool-registry");
 
 const app = express();
 const PORT = Number(process.env.JARVIS_PORT || 3010);
 const HOST = process.env.JARVIS_HOST || "127.0.0.1";
+const registry = new ToolRegistry();
 
 app.use(express.json({ limit: "2mb" }));
 
-function executeWithPolicy(step, executionContext = {}) {
-  const input = step.input || {};
-  const sideEffectClass = step.risk === "high" ? "external_side_effect" : undefined;
-  const policy = evaluateToolCall(step.tool, input, {
+const KNOWN_TOOLS = [
+  "read_file", "write_file", "run_command", "run_code", "list_directory",
+  "search_knowledge", "search_session_memory", "edit_file_surgical", "todo_write",
+  "todo_read", "web_search", "fetch_web_page", "solve_tot", "design_audit",
+  "hierarchical_crew", "debate_group_chat", "invoke_specialist_agent", "generate_3d_model"
+];
+
+for (const name of KNOWN_TOOLS) {
+  registry.register({
+    name,
+    description: `JARVIS governed ${name} tool`,
+    execute: (input) => executeTool(name, input)
+  });
+}
+
+async function executeWithPolicy(step, executionContext = {}) {
+  if (!step || typeof step.tool !== "string" || !step.tool.trim()) {
+    throw new Error("A valid tool name is required.");
+  }
+  const input = step.input && typeof step.input === "object" ? step.input : {};
+  return registry.execute(step.tool, input, {
     root: process.cwd(),
-    sideEffectClass,
+    sideEffectClass: step.risk === "high" ? "external_side_effect" : undefined,
     autoApprove: executionContext.autoApprove === true
   });
-  if (!policy.allowed) {
-    const error = new Error(policy.reason);
-    error.code = policy.requiresApproval ? "APPROVAL_REQUIRED" : "TOOL_DENIED";
-    throw error;
-  }
-  return executeTool(step.tool, input);
 }
 
 app.get("/health", (_req, res) => {
-  res.json({ service: "JARVIS", status: "ONLINE", timestamp: new Date().toISOString() });
+  res.json({
+    service: "JARVIS",
+    status: "ONLINE",
+    timestamp: new Date().toISOString(),
+    tools: registry.list()
+  });
 });
 
 app.post("/api/jarvis/run", async (req, res) => {
@@ -36,11 +53,12 @@ app.post("/api/jarvis/run", async (req, res) => {
   if (!goal) return res.status(400).json({ success: false, error: "goal is required" });
 
   try {
+    const autoApprove = req.body.autoApprove === true;
     const result = await runJarvisAgent(goal, {
       sessionId: req.body.sessionId || "default_session",
       limits: req.body.limits || {},
-      autoApprove: req.body.autoApprove === true,
-      executor: (step, context) => executeWithPolicy(step, { ...context, autoApprove: req.body.autoApprove === true })
+      autoApprove,
+      executor: (step, context) => executeWithPolicy(step, { ...context, autoApprove })
     });
     res.status(result.success ? 200 : 422).json(result);
   } catch (err) {
@@ -56,4 +74,4 @@ function startServer(port = PORT, host = HOST) {
 
 if (require.main === module) startServer();
 
-module.exports = { app, startServer, executeWithPolicy };
+module.exports = { app, startServer, executeWithPolicy, registry };
