@@ -32,7 +32,7 @@ class AutonomousOrchestrator {
     this.executor = options.executor;
     this.verifier = options.verifier;
     this.recovery = options.recovery;
-    this.taskStore = options.taskStore || null;
+    this.taskStore = options.taskStore instanceof TaskStore ? options.taskStore : null;
   }
 
   persist(task, sessionId, plan, results, reason = null, finalVerification = null) {
@@ -51,7 +51,12 @@ class AutonomousOrchestrator {
       ? startedAt + this.limits.maxWallTimeMs
       : Infinity;
     const sessionId = context.sessionId || "default_session";
-    let task = createTask(goal, { ...context, phase: "planner", startedAt, id: context.taskId });
+    const metadata = {
+      phase: "planner",
+      startedAt,
+      sessionId: String(sessionId)
+    };
+    let task = createTask(goal, { ...metadata, id: context.taskId });
     let plan;
     this.persist(task, sessionId, null, []);
 
