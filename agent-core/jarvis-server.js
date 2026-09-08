@@ -1,6 +1,7 @@
 "use strict";
 
 const express = require("express");
+const { execSync } = require("child_process");
 const { runJarvisAgent } = require("./jarvis-agent");
 const { executeTool } = require("../autonomous-loop-agent-v7-free");
 const { ToolRegistry } = require("./tool-registry");
@@ -26,7 +27,21 @@ for (const name of KNOWN_TOOLS) {
   registry.register({
     name,
     description: `JARVIS governed ${name} tool`,
-    execute: (input) => executeTool(name, input)
+    execute: (input) => {
+      if (name === "run_command") {
+        const command = String(input.command || "").trim();
+        if (!command) throw new Error("Empty command.");
+        return execSync(command, {
+          cwd: process.cwd(),
+          encoding: "utf-8",
+          timeout: 15000,
+          maxBuffer: 1024 * 1024,
+          windowsHide: true,
+          stdio: ["ignore", "pipe", "pipe"]
+        });
+      }
+      return executeTool(name, input);
+    }
   });
 }
 
