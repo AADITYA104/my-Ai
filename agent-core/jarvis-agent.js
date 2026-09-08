@@ -49,7 +49,7 @@ async function recover(step, result, verification) {
   return parseJson(await askModel([{
     role: "user",
     content: `Step: ${step.description}\nCurrent tool input: ${JSON.stringify(step.input || {})}\nPrevious result: ${String(result)}\nVerification: ${JSON.stringify(verification)}`
-  }], system));
+  }], system);
 }
 
 function mergeToolInput(base, recoveryContext) {
@@ -69,6 +69,9 @@ async function runJarvisAgent(goal, context = {}) {
       }], "Act as an execution specialist. Do not claim external side effects unless a tool actually performs them.");
     }
     const toolInput = mergeToolInput(step.input || context.toolInput || {}, executionContext.recoveryContext);
+    if (context.registry && typeof context.registry.execute === "function") {
+      return context.registry.execute(toolName, toolInput, context);
+    }
     return executeTool(toolName, toolInput);
   });
   const verifier = context.verifier || verifyStep;
