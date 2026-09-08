@@ -21,6 +21,16 @@ assert.deepEqual(normalizePlan({ steps: [{ description: "write", tool: "write_fi
   content: "x"
 });
 
+assert.throws(
+  () => normalizePlan({ steps: [
+    { id: "same", description: "one" },
+    { id: "same", description: "two" }
+  ] }, "duplicate"),
+  /duplicate step id/
+);
+
+assert.deepEqual(normalizePlan({ steps: [{ description: "array input", input: ["unsafe"] }] }, "input").steps[0].input, {});
+
 (async () => {
   let executions = 0;
   let recoveries = 0;
@@ -86,6 +96,53 @@ assert.deepEqual(normalizePlan({ steps: [{ description: "write", tool: "write_fi
   assert.equal(slowResult.success, false);
   assert.equal(slowResult.state, "blocked");
   assert.match(slowResult.reason, /Wall-clock budget exhausted/);
+
+  let timedExecutorCalls = 0;
+  const executorTimeout = new AutonomousOrchestrator({
+    limits: { maxSteps: 5, maxToolCalls: 5, maxRetries: 2, maxWallTimeMs: 15 },
+    planner: async () => ({ steps: [{ id: 1, description: "hang in executor" }] }),
+    executor: async () => {
+      timedExecutorCalls++;
+      await new Promise(resolve => setTimeout(resolve, 100));
+      return "late";
+    },
+    verifier: async () => ({ pass: true })
+  });
+  const executorTimeoutResult = await executorTimeout.run("executor timeout");
+  assert.equal(executorTimeoutResult.success, false);
+  assert.equal(executorTimeoutResult.state, "blocked");
+  assert.match(executorTimeoutResult.reason, /Wall-clock budget exhausted/);
+  assert.equal(timedExecutorCalls, 1);
+
+  const verifierTimeout = new AutonomousOrchestrator({
+    limits: { maxSteps: 5, maxToolCalls: 5, maxRetries: 2, maxWallTimeMs: 15 },
+    planner: async () => ({ steps: [{ id: 1, description: "hang in verifier" }] }),
+    executor: async () => "ok",
+    verifier: async (step) => {
+      if (step.id === "final") return { pass: true };
+      await new Promise(resolve => setTimeout(resolve, 100));
+      return { pass: true };
+    }
+  });
+  const verifierTimeoutResult = await verifierTimeout.run("verifier timeout");
+  assert.equal(verifierTimeoutResult.success, false);
+  assert.equal(verifierTimeoutResult.state, "blocked");
+  assert.match(verifierTimeoutResult.reason, /Wall-clock budget exhausted/);
+
+  const recoveryTimeout = new AutonomousOrchestrator({
+    limits: { maxSteps: 5, maxToolCalls: 5, maxRetries: 2, maxWallTimeMs: 15 },
+    planner: async () => ({ steps: [{ id: 1, description: "hang in recovery" }] }),
+    executor: async () => { throw new Error("step failed"); },
+    verifier: async () => ({ pass: false, reason: "not verified" }),
+    recovery: async () => {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      return { retry: true };
+    }
+  });
+  const recoveryTimeoutResult = await recoveryTimeout.run("recovery timeout");
+  assert.equal(recoveryTimeoutResult.success, false);
+  assert.equal(recoveryTimeoutResult.state, "blocked");
+  assert.match(recoveryTimeoutResult.reason, /Wall-clock budget exhausted/);
 
   const failed = new AutonomousOrchestrator({
     limits: { maxSteps: 5, maxToolCalls: 5, maxRetries: 2 },
