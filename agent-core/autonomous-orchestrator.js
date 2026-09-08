@@ -4,6 +4,20 @@ const { createTask, transition, canContinue, isTerminal } = require("./task-stat
 const { DEFAULTS } = require("./autonomy-policy");
 const { TaskStore } = require("./task-store");
 
+const NON_RETRYABLE_ERROR_CODES = new Set([
+  "APPROVAL_REQUIRED",
+  "TOOL_DENIED",
+  "INVALID_TOOL_INPUT",
+  "WORKSPACE_ESCAPE",
+  "TASK_NOT_FOUND",
+  "TASK_NOT_RESUMABLE"
+]);
+
+function isRetryableError(error) {
+  if (!error) return true;
+  return !NON_RETRYABLE_ERROR_CODES.has(error.code);
+}
+
 function normalizePlan(plan, goal) {
   if (!plan || typeof plan !== "object") throw new Error("Planner returned no plan.");
   const steps = Array.isArray(plan.steps) ? plan.steps : Array.isArray(plan.subtasks) ? plan.subtasks : [];
@@ -219,8 +233,8 @@ class AutonomousOrchestrator {
             : { reason: "Verification failed", previousResult: stepResult };
           this.persist(task, sessionId, plan, results, lastVerification?.reason || "Verification failed");
         } catch (error) {
-          lastVerification = { pass: false, reason: error.message };
-          if (attempts >= maxRetries) break;
+          lastVerification = { pass: false, reason: error.message, code: error.code || null };
+          if (!isRetryableError(error) || attempts >= maxRetries) break;
           try {
             recoveryContext = typeof this.recovery === "function"
               ? await withDeadline(() => this.recovery(step, stepResult, lastVerification, { goal, plan, attempt: attempts, task, deadline, error, ...context }), deadline, `step ${step.id} recovery`)
@@ -286,4 +300,4 @@ class AutonomousOrchestrator {
   }
 }
 
-module.exports = { AutonomousOrchestrator, normalizePlan, withDeadline };
+module.exports = { AutonomousOrchestrator, normalizePlan, withDeadline, isRetryableError };
