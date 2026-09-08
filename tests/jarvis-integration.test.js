@@ -3,6 +3,7 @@
 const assert = require("assert");
 const { runJarvisAgent } = require("../agent-core/jarvis-agent");
 const { executeWithPolicy, registry } = require("../agent-core/jarvis-server");
+const { AgentLoopGuard } = require("../agent-loop-guard");
 
 (async () => {
   let executions = 0;
@@ -35,6 +36,15 @@ const { executeWithPolicy, registry } = require("../agent-core/jarvis-server");
   );
   assert.ok(typeof safeOutput === "string");
   assert.ok(safeOutput.length > 0);
+
+  const loopGuard = new AgentLoopGuard();
+  const readStep = { tool: "read_file", input: { file_path: "package.json" }, risk: "low" };
+  await executeWithPolicy(readStep, { autoApprove: false, loopGuard });
+  await executeWithPolicy(readStep, { autoApprove: false, loopGuard });
+  await assert.rejects(
+    executeWithPolicy(readStep, { autoApprove: false, loopGuard }),
+    err => err.code === "LOOP_GUARD_BLOCKED"
+  );
 
   console.log("jarvis integration tests: PASS");
 })().catch(err => {
