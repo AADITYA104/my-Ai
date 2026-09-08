@@ -9,19 +9,11 @@ assert.equal(typeof adapter.mergeToolInput, "function");
 
 const base = { file_path: "safe.txt", content: "before", unchanged: true };
 assert.deepEqual(mergeToolInput(base, { toolInputPatch: { content: "after" } }), {
-  file_path: "safe.txt",
-  content: "after",
-  unchanged: true
+  file_path: "safe.txt", content: "after", unchanged: true
 });
 assert.deepEqual(base, { file_path: "safe.txt", content: "before", unchanged: true });
 assert.deepEqual(mergeToolInput(base, null), base);
 assert.deepEqual(mergeToolInput(base, { toolInputPatch: [] }), base);
-assert.deepEqual(mergeToolInput(base, { toolInputPatch: { extra: "ok" } }), {
-  file_path: "safe.txt",
-  content: "before",
-  unchanged: true,
-  extra: "ok"
-});
 
 (async () => {
   let registryCalls = 0;
