@@ -216,8 +216,8 @@ class AutonomousOrchestrator {
             recoveryContext,
             task,
             deadline,
-            ...operationContext,
-            ...context
+            ...context,
+            ...operationContext
           }), deadline, `step ${step.id} execution`);
           task = transition(task, "verifying", `Step ${step.id} execution finished`);
           lastVerification = await withDeadline(() => this.verifier(step, stepResult, {
@@ -226,8 +226,8 @@ class AutonomousOrchestrator {
             attempt: attempts,
             task,
             deadline,
-            ...operationContext,
-            ...context
+            ...context,
+            ...operationContext
           }), deadline, `step ${step.id} verification`);
           if (lastVerification && lastVerification.pass === true) {
             task = transition(task, "executing", `Step ${step.id} verified`);
@@ -240,7 +240,7 @@ class AutonomousOrchestrator {
           if (attempts >= maxRetries) break;
           const recoveryId = createOperationId(sessionId, task.id, step.id, attempts, "recovery");
           recoveryContext = typeof this.recovery === "function"
-            ? await withDeadline(() => this.recovery(step, stepResult, lastVerification, { goal, plan, attempt: attempts, task, deadline, executionId, operationId: recoveryId, ...context }), deadline, `step ${step.id} recovery`)
+            ? await withDeadline(() => this.recovery(step, stepResult, lastVerification, { goal, plan, attempt: attempts, task, deadline, ...context, executionId, operationId: recoveryId }), deadline, `step ${step.id} recovery`)
             : { reason: "Verification failed", previousResult: stepResult };
           this.persist(task, sessionId, plan, results, lastVerification?.reason || "Verification failed");
         } catch (error) {
@@ -249,7 +249,7 @@ class AutonomousOrchestrator {
           try {
             const recoveryId = createOperationId(sessionId, task.id, step.id, attempts, "recovery");
             recoveryContext = typeof this.recovery === "function"
-              ? await withDeadline(() => this.recovery(step, stepResult, lastVerification, { goal, plan, attempt: attempts, task, deadline, error, executionId, operationId: recoveryId, ...context }), deadline, `step ${step.id} recovery`)
+              ? await withDeadline(() => this.recovery(step, stepResult, lastVerification, { goal, plan, attempt: attempts, task, deadline, error, ...context, executionId, operationId: recoveryId }), deadline, `step ${step.id} recovery`)
               : { reason: error.message };
           } catch (recoveryError) {
             recoveryContext = { reason: error.message, recoveryError: recoveryError.message };
