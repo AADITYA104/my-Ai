@@ -1,6 +1,6 @@
 "use strict";
 
-const { createTask, transition, canContinue } = require("./task-state-machine");
+const { createTask, transition, canContinue, isTerminal } = require("./task-state-machine");
 const { DEFAULTS } = require("./autonomy-policy");
 const { TaskStore } = require("./task-store");
 
@@ -41,6 +41,11 @@ class AutonomousOrchestrator {
   }
 
   async run(goal, context = {}) {
+    const resumeTaskId = context.resumeTaskId || context.resumeTask;
+    if (resumeTaskId && this.taskStore) {
+      return this.resume(resumeTaskId, context.sessionId || "default_session", context);
+    }
+
     if (!goal || !String(goal).trim()) throw new Error("Goal is required.");
     if (typeof this.planner !== "function") throw new Error("Planner callback is required.");
     if (typeof this.executor !== "function") throw new Error("Executor callback is required.");
@@ -51,12 +56,7 @@ class AutonomousOrchestrator {
       ? startedAt + this.limits.maxWallTimeMs
       : Infinity;
     const sessionId = context.sessionId || "default_session";
-    const metadata = {
-      phase: "planner",
-      startedAt,
-      sessionId: String(sessionId)
-    };
-    let task = createTask(goal, { ...metadata, id: context.taskId });
+    let task = createTask(goal, { phase: "planner", startedAt, sessionId: String(sessionId), id: context.taskId });
     let plan;
     this.persist(task, sessionId, null, []);
 
@@ -71,10 +71,57 @@ class AutonomousOrchestrator {
       return this.snapshot(task, plan, [], error.message);
     }
 
-    const results = [];
+    return this.executePlan(goal, sessionId, task, plan, [], context, deadline);
+  }
+
+  async resume(taskId, sessionId = "default_session", context = {}) {
+    if (!this.taskStore) throw new Error("Task store is required for resume.");
+    if (!taskId || !String(taskId).trim()) throw new Error("Task id is required for resume.");
+    if (typeof this.executor !== "function") throw new Error("Executor callback is required.");
+    if (typeof this.verifier !== "function") throw new Error("Verifier callback is required.");
+
+    const record = this.taskStore.load(taskId, sessionId);
+    if (!record) {
+      const error = new Error(`Persisted task not found: ${taskId}`);
+      error.code = "TASK_NOT_FOUND";
+      throw error;
+    }
+    if (!record.plan || !Array.isArray(record.plan.steps)) {
+      const error = new Error("Persisted task has no resumable plan.");
+      error.code = "TASK_NOT_RESUMABLE";
+      throw error;
+    }
+    if (record.task.state === "completed") return this.snapshot(record.task, record.plan, record.results, record.reason, record.finalVerification);
+    if (record.task.state === "cancelled") {
+      const error = new Error("Cancelled tasks cannot be resumed.");
+      error.code = "TASK_NOT_RESUMABLE";
+      throw error;
+    }
+
+    let task = record.task;
+    if (isTerminal(task.state)) task = transition(task, "planning", "Resuming persisted task");
+    else if (task.state === "verifying") task = transition(task, "executing", "Resuming persisted task");
+    else if (task.state === "queued") task = transition(task, "planning", "Resuming persisted task");
+    const plan = normalizePlan(record.plan, task.goal);
+    const results = Array.isArray(record.results) ? record.results : [];
+    const startedAt = Date.now();
+    const deadline = Number.isFinite(this.limits.maxWallTimeMs) && this.limits.maxWallTimeMs >= 0
+      ? startedAt + this.limits.maxWallTimeMs
+      : Infinity;
+
+    this.persist(task, sessionId, plan, results, "Resuming persisted task");
+    return this.executePlan(task.goal, sessionId, task, plan, results, context, deadline);
+  }
+
+  async executePlan(goal, sessionId, initialTask, plan, initialResults, context, deadline) {
+    let task = initialTask;
+    const results = [...initialResults];
     const maxRetries = this.limits.maxRetries ?? 3;
+    const completedStepIds = new Set(results.map(entry => entry && entry.step && entry.step.id));
 
     for (const step of plan.steps) {
+      if (completedStepIds.has(step.id)) continue;
+
       if (Date.now() >= deadline) {
         task = transition(task, "blocked", "Wall-clock budget exhausted");
         this.persist(task, sessionId, plan, results, "Wall-clock budget exhausted");
@@ -114,7 +161,8 @@ class AutonomousOrchestrator {
             attempt: attempts,
             recoveryContext,
             task,
-            deadline
+            deadline,
+            ...context
           });
           task = transition(task, "verifying", `Step ${step.id} execution finished`);
           lastVerification = await this.verifier(step, stepResult, {
@@ -122,18 +170,20 @@ class AutonomousOrchestrator {
             plan,
             attempt: attempts,
             task,
-            deadline
+            deadline,
+            ...context
           });
           if (lastVerification && lastVerification.pass === true) {
             task = transition(task, "executing", `Step ${step.id} verified`);
             results.push({ step, attempts, result: stepResult, verification: lastVerification });
+            completedStepIds.add(step.id);
             this.persist(task, sessionId, plan, results);
             stepFinished = true;
             break;
           }
           if (attempts >= maxRetries) break;
           recoveryContext = typeof this.recovery === "function"
-            ? await this.recovery(step, stepResult, lastVerification, { goal, plan, attempt: attempts, task, deadline })
+            ? await this.recovery(step, stepResult, lastVerification, { goal, plan, attempt: attempts, task, deadline, ...context })
             : { reason: "Verification failed", previousResult: stepResult };
           this.persist(task, sessionId, plan, results, lastVerification?.reason || "Verification failed");
         } catch (error) {
@@ -141,7 +191,7 @@ class AutonomousOrchestrator {
           if (attempts >= maxRetries) break;
           try {
             recoveryContext = typeof this.recovery === "function"
-              ? await this.recovery(step, stepResult, lastVerification, { goal, plan, attempt: attempts, task, deadline, error })
+              ? await this.recovery(step, stepResult, lastVerification, { goal, plan, attempt: attempts, task, deadline, error, ...context })
               : { reason: error.message };
           } catch (recoveryError) {
             recoveryContext = { reason: error.message, recoveryError: recoveryError.message };
@@ -165,7 +215,7 @@ class AutonomousOrchestrator {
       finalVerification = await this.verifier(
         { id: "final", description: goal, doneWhen: "All plan steps are complete", tool: null, input: {}, risk: "normal" },
         results,
-        { goal, plan, task, final: true, deadline }
+        { goal, plan, task, final: true, deadline, ...context }
       );
     } catch (error) {
       task = transition(task, "failed", `Final verification error: ${error.message}`);
