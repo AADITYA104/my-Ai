@@ -7,25 +7,25 @@ function normalizePlan(plan, goal) {
   if (!plan || typeof plan !== "object") throw new Error("Planner returned no plan.");
   const steps = Array.isArray(plan.steps) ? plan.steps : Array.isArray(plan.subtasks) ? plan.subtasks : [];
   if (steps.length === 0) throw new Error("Planner returned an empty plan.");
+  const normalized = steps.map((step, index) => ({
+    id: step.id == null ? index + 1 : step.id,
+    description: String(step.description || step.task || "").trim(),
+    doneWhen: String(step.doneWhen || step.successCriteria || "").trim(),
+    tool: step.tool || null,
+    input: step.input && typeof step.input === "object" ? step.input : {},
+    risk: step.risk || "normal"
+  })).filter(step => step.description);
+  if (normalized.length === 0) throw new Error("Planner returned no usable steps.");
   return {
     goal: String(plan.goal || goal).trim(),
     assumptions: Array.isArray(plan.assumptions) ? plan.assumptions : [],
-    steps: steps.map((step, index) => ({
-      id: step.id == null ? index + 1 : step.id,
-      description: String(step.description || step.task || "").trim(),
-      doneWhen: String(step.doneWhen || step.successCriteria || "").trim(),
-      tool: step.tool || null,
-      risk: step.risk || "normal"
-    })).filter(step => step.description)
+    steps: normalized
   };
 }
 
 class AutonomousOrchestrator {
   constructor(options = {}) {
-    this.limits = {
-      ...DEFAULTS,
-      ...(options.limits || {})
-    };
+    this.limits = { ...DEFAULTS, ...(options.limits || {}) };
     this.plan = options.plan || null;
     this.planner = options.planner;
     this.executor = options.executor;
@@ -39,12 +39,31 @@ class AutonomousOrchestrator {
     if (typeof this.executor !== "function") throw new Error("Executor callback is required.");
     if (typeof this.verifier !== "function") throw new Error("Verifier callback is required.");
 
-    let task = createTask(goal, { ...context, phase: "planner" });
-    let plan = this.plan ? normalizePlan(this.plan, goal) : normalizePlan(await this.planner(goal, context), goal);
-    task = transition(task, "planning", "Plan created");
+    const startedAt = Date.now();
+    const deadline = Number.isFinite(this.limits.maxWallTimeMs) && this.limits.maxWallTimeMs >= 0
+      ? startedAt + this.limits.maxWallTimeMs
+      : Infinity;
+    let task = createTask(goal, { ...context, phase: "planner", startedAt });
+    let plan;
+
+    try {
+      plan = this.plan ? normalizePlan(this.plan, goal) : normalizePlan(await this.planner(goal, context), goal);
+      task = transition(task, "planning", "Plan created");
+    } catch (error) {
+      task = transition(task, "planning", "Planner failed");
+      task = transition(task, "failed", `Planning failed: ${error.message}`);
+      return this.snapshot(task, null, [], error.message);
+    }
 
     const results = [];
+    const maxRetries = this.limits.maxRetries ?? 3;
+
     for (const step of plan.steps) {
+      if (Date.now() >= deadline) {
+        task = transition(task, "blocked", "Wall-clock budget exhausted");
+        return this.snapshot(task, plan, results, "Wall-clock budget exhausted");
+      }
+
       const budget = canContinue(task, this.limits);
       if (!budget.ok) {
         task = transition(task, "blocked", budget.reason);
@@ -57,7 +76,12 @@ class AutonomousOrchestrator {
       let recoveryContext = null;
       let stepFinished = false;
 
-      while (attempts < (this.limits.maxRetries || 3)) {
+      while (attempts < maxRetries) {
+        if (Date.now() >= deadline) {
+          task = transition(task, "blocked", "Wall-clock budget exhausted");
+          return this.snapshot(task, plan, results, "Wall-clock budget exhausted");
+        }
+
         const nextState = task.state === "planning" || task.state === "verifying" ? "executing" : task.state;
         task = transition(task, nextState, `Executing step ${step.id}`);
         attempts += 1;
@@ -69,14 +93,16 @@ class AutonomousOrchestrator {
             plan,
             attempt: attempts,
             recoveryContext,
-            task
+            task,
+            deadline
           });
           task = transition(task, "verifying", `Step ${step.id} execution finished`);
           lastVerification = await this.verifier(step, stepResult, {
             goal,
             plan,
             attempt: attempts,
-            task
+            task,
+            deadline
           });
           if (lastVerification && lastVerification.pass === true) {
             task = transition(task, "executing", `Step ${step.id} verified`);
@@ -84,30 +110,19 @@ class AutonomousOrchestrator {
             stepFinished = true;
             break;
           }
-          if (attempts >= (this.limits.maxRetries || 3)) break;
-          if (typeof this.recovery === "function") {
-            recoveryContext = await this.recovery(step, stepResult, lastVerification, {
-              goal,
-              plan,
-              attempt: attempts,
-              task
-            });
-          } else {
-            recoveryContext = { reason: "Verification failed", previousResult: stepResult };
-          }
+          if (attempts >= maxRetries) break;
+          recoveryContext = typeof this.recovery === "function"
+            ? await this.recovery(step, stepResult, lastVerification, { goal, plan, attempt: attempts, task, deadline })
+            : { reason: "Verification failed", previousResult: stepResult };
         } catch (error) {
           lastVerification = { pass: false, reason: error.message };
-          if (attempts >= (this.limits.maxRetries || 3)) break;
-          if (typeof this.recovery === "function") {
-            recoveryContext = await this.recovery(step, stepResult, lastVerification, {
-              goal,
-              plan,
-              attempt: attempts,
-              task,
-              error
-            });
-          } else {
-            recoveryContext = { reason: error.message };
+          if (attempts >= maxRetries) break;
+          try {
+            recoveryContext = typeof this.recovery === "function"
+              ? await this.recovery(step, stepResult, lastVerification, { goal, plan, attempt: attempts, task, deadline, error })
+              : { reason: error.message };
+          } catch (recoveryError) {
+            recoveryContext = { reason: error.message, recoveryError: recoveryError.message };
           }
         }
       }
@@ -119,15 +134,21 @@ class AutonomousOrchestrator {
     }
 
     task = transition(task, "verifying", "All planned steps executed");
-    const finalVerification = await this.verifier({ id: "final", description: goal, doneWhen: "All plan steps are complete" }, results, {
-      goal,
-      plan,
-      task,
-      final: true
-    });
+    let finalVerification;
+    try {
+      finalVerification = await this.verifier(
+        { id: "final", description: goal, doneWhen: "All plan steps are complete", tool: null, input: {}, risk: "normal" },
+        results,
+        { goal, plan, task, final: true, deadline }
+      );
+    } catch (error) {
+      task = transition(task, "failed", `Final verification error: ${error.message}`);
+      return this.snapshot(task, plan, results, error.message);
+    }
+
     if (!finalVerification || finalVerification.pass !== true) {
       task = transition(task, "failed", "Final verification failed");
-      return this.snapshot(task, plan, results, finalVerification?.reason || "Final verification failed");
+      return this.snapshot(task, plan, results, finalVerification?.reason || "Final verification failed", finalVerification);
     }
 
     task = transition(task, "completed", "Final verification passed");
