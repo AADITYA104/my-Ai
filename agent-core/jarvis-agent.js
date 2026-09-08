@@ -30,7 +30,10 @@ async function createPlan(goal, context = {}) {
 }
 
 async function verifyStep(step, result) {
-  const verdict = await criticStep({ description: step.description, doneWhen: step.doneWhen }, String(result));
+  const verdict = await criticStep(
+    { description: step.description, doneWhen: step.doneWhen },
+    String(result)
+  );
   return {
     pass: verdict.pass,
     confidence: verdict.confidence,
@@ -50,7 +53,7 @@ async function recover(step, result, verification) {
   return parseJson(await askModel([{
     role: "user",
     content: `Step: ${step.description}\nCurrent tool input: ${JSON.stringify(step.input || {})}\nPrevious result: ${String(result)}\nVerification: ${JSON.stringify(verification)}`
-  }], system);
+  }], system));
 }
 
 function mergeToolInput(base, recoveryContext) {
@@ -61,26 +64,36 @@ function mergeToolInput(base, recoveryContext) {
 
 async function runJarvisAgent(goal, context = {}) {
   const planner = context.planner || createPlan;
+  const verifier = context.verifier || verifyStep;
+  const recovery = context.recovery || recover;
+  const taskStore = context.taskStore instanceof TaskStore ? context.taskStore : null;
+
   const executor = context.executor || (async (step, executionContext) => {
     const toolName = step.tool;
+
     if (!toolName) {
-      return await askModel([{
-        role: "user",
-        content: `Execute this reasoning-only step and return the concrete result:\n${step.description}\nSuccess criteria: ${step.doneWhen}`
-      }], "Act as an execution specialist. Do not claim external side effects unless a tool actually performs them.");
+      return askModel(
+        [{
+          role: "user",
+          content: `Execute this reasoning-only step and return the concrete result:\n${step.description}\nSuccess criteria: ${step.doneWhen}`
+        }],
+        "Act as an execution specialist. Do not claim external side effects unless a tool actually performs them."
+      );
     }
+
     if (!context.registry || typeof context.registry.execute !== "function") {
       const error = new Error("Governed tool registry is required for tool execution.");
       error.code = "REGISTRY_REQUIRED";
       throw error;
     }
-    const toolInput = mergeToolInput(step.input || context.toolInput || {}, executionContext.recoveryContext);
+
+    const toolInput = mergeToolInput(
+      step.input || context.toolInput || {},
+      executionContext && executionContext.recoveryContext
+    );
     return context.registry.execute(toolName, toolInput, context);
   });
-  const verifier = context.verifier || verifyStep;
-  const recovery = context.recovery || recover;
 
-  const taskStore = context.taskStore instanceof TaskStore ? context.taskStore : null;
   const orchestrator = new AutonomousOrchestrator({
     limits: context.limits || {},
     planner,
@@ -93,4 +106,12 @@ async function runJarvisAgent(goal, context = {}) {
   return orchestrator.run(goal, context);
 }
 
-module.exports = { runJarvisAgent, createPlan, verifyStep, recover, mergeToolInput, askModel, parseJson }; 
+module.exports = {
+  runJarvisAgent,
+  createPlan,
+  verifyStep,
+  recover,
+  mergeToolInput,
+  askModel,
+  parseJson
+};
