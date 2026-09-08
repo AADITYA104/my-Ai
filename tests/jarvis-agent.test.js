@@ -1,7 +1,11 @@
 "use strict";
 
 const assert = require("assert");
-const { mergeToolInput, runJarvisAgent } = require("../agent-core/jarvis-agent");
+const adapter = require("../agent-core/jarvis-agent");
+const { mergeToolInput, runJarvisAgent } = adapter;
+
+assert.equal(typeof adapter.runJarvisAgent, "function");
+assert.equal(typeof adapter.mergeToolInput, "function");
 
 const base = { file_path: "safe.txt", content: "before", unchanged: true };
 const patched = mergeToolInput(base, { toolInputPatch: { content: "after" } });
