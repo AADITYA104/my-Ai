@@ -2,7 +2,7 @@
 
 const assert = require("assert");
 const { runJarvisAgent } = require("../agent-core/jarvis-agent");
-const { executeWithPolicy, registry, isServerAutoApprovalEnabled, adaptLegacyToolInput } = require("../agent-core/jarvis-server");
+const { executeWithPolicy, registry, isServerAutoApprovalEnabled, adaptLegacyToolInput, resolveWorkspacePath } = require("../agent-core/jarvis-server");
 const { AgentLoopGuard } = require("../agent-loop-guard");
 
 (async () => {
@@ -35,12 +35,24 @@ const { AgentLoopGuard } = require("../agent-loop-guard");
   assert.strictEqual(codeAdapter.language, "javascript");
   assert.strictEqual(codeAdapter.code, "1 + 1");
 
+  assert.strictEqual(resolveWorkspacePath("."), process.cwd());
+  assert.throws(() => resolveWorkspacePath("../"), err => err.code === "WORKSPACE_ESCAPE");
+  assert.throws(() => resolveWorkspacePath("../../etc"), err => err.code === "WORKSPACE_ESCAPE");
+
   const directory = await executeWithPolicy(
     { tool: "list_directory", input: { dir_path: "." }, risk: "low" },
     { autoApprove: false }
   );
   assert.ok(Array.isArray(directory));
   assert.ok(directory.some(entry => entry.name === "package.json"));
+
+  await assert.rejects(
+    executeWithPolicy(
+      { tool: "list_directory", input: { dir_path: "../" }, risk: "low" },
+      { autoApprove: false }
+    ),
+    err => err.code === "WORKSPACE_ESCAPE"
+  );
 
   const previousAutoApprove = process.env.JARVIS_ALLOW_AUTO_APPROVE;
   delete process.env.JARVIS_ALLOW_AUTO_APPROVE;
