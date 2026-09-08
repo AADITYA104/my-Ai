@@ -13,15 +13,44 @@ function normalizePlan(plan, goal) {
     description: String(step.description || step.task || "").trim(),
     doneWhen: String(step.doneWhen || step.successCriteria || "").trim(),
     tool: step.tool || null,
-    input: step.input && typeof step.input === "object" ? step.input : {},
+    input: step.input && typeof step.input === "object" && !Array.isArray(step.input) ? step.input : {},
     risk: step.risk || "normal"
   })).filter(step => step.description);
   if (normalized.length === 0) throw new Error("Planner returned no usable steps.");
+
+  const ids = new Set();
+  for (const step of normalized) {
+    const key = String(step.id);
+    if (ids.has(key)) throw new Error(`Planner returned duplicate step id: ${step.id}`);
+    ids.add(key);
+  }
+
   return {
     goal: String(plan.goal || goal).trim(),
     assumptions: Array.isArray(plan.assumptions) ? plan.assumptions : [],
     steps: normalized
   };
+}
+
+function withDeadline(promiseOrFactory, deadline, label = "Operation") {
+  if (deadline === Infinity) return Promise.resolve().then(promiseOrFactory);
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) {
+    const error = new Error(`Wall-clock budget exhausted during ${label}.`);
+    error.code = "WALL_TIME_EXHAUSTED";
+    return Promise.reject(error);
+  }
+
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error(`Wall-clock budget exhausted during ${label}.`);
+      error.code = "WALL_TIME_EXHAUSTED";
+      reject(error);
+    }, remaining);
+  });
+
+  return Promise.race([Promise.resolve().then(promiseOrFactory), timeout]).finally(() => clearTimeout(timer));
 }
 
 class AutonomousOrchestrator {
@@ -61,14 +90,17 @@ class AutonomousOrchestrator {
     this.persist(task, sessionId, null, []);
 
     try {
-      plan = this.plan ? normalizePlan(this.plan, goal) : normalizePlan(await this.planner(goal, context), goal);
+      plan = this.plan
+        ? normalizePlan(this.plan, goal)
+        : normalizePlan(await withDeadline(() => this.planner(goal, context), deadline, "planning"), goal);
       task = transition(task, "planning", "Plan created");
       this.persist(task, sessionId, plan, []);
     } catch (error) {
+      const reason = error.code === "WALL_TIME_EXHAUSTED" ? "Wall-clock budget exhausted" : `Planning failed: ${error.message}`;
       task = transition(task, "planning", "Planner failed");
-      task = transition(task, "failed", `Planning failed: ${error.message}`);
-      this.persist(task, sessionId, plan, [], error.message);
-      return this.snapshot(task, plan, [], error.message);
+      task = transition(task, error.code === "WALL_TIME_EXHAUSTED" ? "blocked" : "failed", reason);
+      this.persist(task, sessionId, plan, [], reason);
+      return this.snapshot(task, plan, [], reason);
     }
 
     return this.executePlan(goal, sessionId, task, plan, [], context, deadline);
@@ -155,7 +187,7 @@ class AutonomousOrchestrator {
         this.persist(task, sessionId, plan, results);
 
         try {
-          stepResult = await this.executor(step, {
+          stepResult = await withDeadline(() => this.executor(step, {
             goal,
             plan,
             attempt: attempts,
@@ -163,16 +195,16 @@ class AutonomousOrchestrator {
             task,
             deadline,
             ...context
-          });
+          }), deadline, `step ${step.id} execution`);
           task = transition(task, "verifying", `Step ${step.id} execution finished`);
-          lastVerification = await this.verifier(step, stepResult, {
+          lastVerification = await withDeadline(() => this.verifier(step, stepResult, {
             goal,
             plan,
             attempt: attempts,
             task,
             deadline,
             ...context
-          });
+          }), deadline, `step ${step.id} verification`);
           if (lastVerification && lastVerification.pass === true) {
             task = transition(task, "executing", `Step ${step.id} verified`);
             results.push({ step, attempts, result: stepResult, verification: lastVerification });
@@ -183,7 +215,7 @@ class AutonomousOrchestrator {
           }
           if (attempts >= maxRetries) break;
           recoveryContext = typeof this.recovery === "function"
-            ? await this.recovery(step, stepResult, lastVerification, { goal, plan, attempt: attempts, task, deadline, ...context })
+            ? await withDeadline(() => this.recovery(step, stepResult, lastVerification, { goal, plan, attempt: attempts, task, deadline, ...context }), deadline, `step ${step.id} recovery`)
             : { reason: "Verification failed", previousResult: stepResult };
           this.persist(task, sessionId, plan, results, lastVerification?.reason || "Verification failed");
         } catch (error) {
@@ -191,7 +223,7 @@ class AutonomousOrchestrator {
           if (attempts >= maxRetries) break;
           try {
             recoveryContext = typeof this.recovery === "function"
-              ? await this.recovery(step, stepResult, lastVerification, { goal, plan, attempt: attempts, task, deadline, error, ...context })
+              ? await withDeadline(() => this.recovery(step, stepResult, lastVerification, { goal, plan, attempt: attempts, task, deadline, error, ...context }), deadline, `step ${step.id} recovery`)
               : { reason: error.message };
           } catch (recoveryError) {
             recoveryContext = { reason: error.message, recoveryError: recoveryError.message };
@@ -201,6 +233,11 @@ class AutonomousOrchestrator {
       }
 
       if (!stepFinished) {
+        if (Date.now() >= deadline || lastVerification?.reason?.startsWith("Wall-clock budget exhausted")) {
+          task = transition(task, "blocked", "Wall-clock budget exhausted");
+          this.persist(task, sessionId, plan, results, "Wall-clock budget exhausted");
+          return this.snapshot(task, plan, results, "Wall-clock budget exhausted");
+        }
         task = transition(task, "failed", `Step ${step.id} failed after ${attempts} attempt(s)`);
         const reason = lastVerification?.reason || "Step verification failed";
         this.persist(task, sessionId, plan, results, reason);
@@ -212,15 +249,16 @@ class AutonomousOrchestrator {
     this.persist(task, sessionId, plan, results);
     let finalVerification;
     try {
-      finalVerification = await this.verifier(
+      finalVerification = await withDeadline(() => this.verifier(
         { id: "final", description: goal, doneWhen: "All plan steps are complete", tool: null, input: {}, risk: "normal" },
         results,
         { goal, plan, task, final: true, deadline, ...context }
-      );
+      ), deadline, "final verification");
     } catch (error) {
-      task = transition(task, "failed", `Final verification error: ${error.message}`);
-      this.persist(task, sessionId, plan, results, error.message);
-      return this.snapshot(task, plan, results, error.message);
+      const reason = error.code === "WALL_TIME_EXHAUSTED" ? "Wall-clock budget exhausted" : `Final verification error: ${error.message}`;
+      task = transition(task, error.code === "WALL_TIME_EXHAUSTED" ? "blocked" : "failed", reason);
+      this.persist(task, sessionId, plan, results, reason);
+      return this.snapshot(task, plan, results, reason);
     }
 
     if (!finalVerification || finalVerification.pass !== true) {
@@ -248,4 +286,4 @@ class AutonomousOrchestrator {
   }
 }
 
-module.exports = { AutonomousOrchestrator, normalizePlan };
+module.exports = { AutonomousOrchestrator, normalizePlan, withDeadline };
