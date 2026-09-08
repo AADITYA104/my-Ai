@@ -71,7 +71,10 @@ assert.deepEqual(normalizePlan({ steps: [{ description: "write", tool: "write_fi
 
   const slow = new AutonomousOrchestrator({
     limits: { maxSteps: 5, maxToolCalls: 5, maxRetries: 2, maxWallTimeMs: 1 },
-    planner: async () => ({ steps: [{ description: "too slow" }] }),
+    planner: async () => {
+      await new Promise(resolve => setTimeout(resolve, 10));
+      return { steps: [{ description: "too slow" }] };
+    },
     executor: async () => "unexpected",
     verifier: async () => ({ pass: true })
   });
