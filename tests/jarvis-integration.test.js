@@ -2,7 +2,7 @@
 
 const assert = require("assert");
 const { runJarvisAgent } = require("../agent-core/jarvis-agent");
-const { executeWithPolicy, registry, isServerAutoApprovalEnabled } = require("../agent-core/jarvis-server");
+const { executeWithPolicy, registry, isServerAutoApprovalEnabled, adaptLegacyToolInput } = require("../agent-core/jarvis-server");
 const { AgentLoopGuard } = require("../agent-loop-guard");
 
 (async () => {
@@ -24,6 +24,23 @@ const { AgentLoopGuard } = require("../agent-loop-guard");
 
   assert.strictEqual(registry.has("read_file"), true);
   assert.strictEqual(registry.has("run_command"), true);
+  assert.strictEqual(registry.has("run_code"), true);
+  assert.strictEqual(registry.has("list_directory"), true);
+
+  const readAdapter = adaptLegacyToolInput("read_file", { file_path: "package.json" });
+  assert.strictEqual(readAdapter.filePath, "package.json");
+  const writeAdapter = adaptLegacyToolInput("write_file", { file_path: "tmp.txt", content: "x" });
+  assert.strictEqual(writeAdapter.filePath, "tmp.txt");
+  const codeAdapter = adaptLegacyToolInput("run_code", { language: "javascript", code: "1 + 1" });
+  assert.strictEqual(codeAdapter.language, "javascript");
+  assert.strictEqual(codeAdapter.code, "1 + 1");
+
+  const directory = await executeWithPolicy(
+    { tool: "list_directory", input: { dir_path: "." }, risk: "low" },
+    { autoApprove: false }
+  );
+  assert.ok(Array.isArray(directory));
+  assert.ok(directory.some(entry => entry.name === "package.json"));
 
   const previousAutoApprove = process.env.JARVIS_ALLOW_AUTO_APPROVE;
   delete process.env.JARVIS_ALLOW_AUTO_APPROVE;
