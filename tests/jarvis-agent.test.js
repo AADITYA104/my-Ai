@@ -8,8 +8,11 @@ assert.equal(typeof adapter.runJarvisAgent, "function");
 assert.equal(typeof adapter.mergeToolInput, "function");
 
 const base = { file_path: "safe.txt", content: "before", unchanged: true };
-const patched = mergeToolInput(base, { toolInputPatch: { content: "after" } });
-assert.deepEqual(patched, { file_path: "safe.txt", content: "after", unchanged: true });
+assert.deepEqual(mergeToolInput(base, { toolInputPatch: { content: "after" } }), {
+  file_path: "safe.txt",
+  content: "after",
+  unchanged: true
+});
 assert.deepEqual(base, { file_path: "safe.txt", content: "before", unchanged: true });
 assert.deepEqual(mergeToolInput(base, null), base);
 assert.deepEqual(mergeToolInput(base, { toolInputPatch: [] }), base);
@@ -34,13 +37,7 @@ assert.deepEqual(mergeToolInput(base, { toolInputPatch: { extra: "ok" } }), {
   const result = await runJarvisAgent("registry routing", {
     registry,
     planner: async () => ({
-      steps: [{
-        id: 1,
-        description: "use registry",
-        doneWhen: "result returned",
-        tool: "test_tool",
-        input: { value: "from-plan" }
-      }]
+      steps: [{ id: 1, description: "use registry", doneWhen: "result returned", tool: "test_tool", input: { value: "from-plan" } }]
     }),
     verifier: async () => ({ pass: true, reason: "verified" })
   });
@@ -53,13 +50,7 @@ assert.deepEqual(mergeToolInput(base, { toolInputPatch: { extra: "ok" } }), {
   await assert.rejects(
     runJarvisAgent("registry is mandatory", {
       planner: async () => ({
-        steps: [{
-          id: 1,
-          description: "attempt governed tool",
-          doneWhen: "tool executes",
-          tool: "test_tool",
-          input: {}
-        }]
+        steps: [{ id: 1, description: "attempt governed tool", doneWhen: "tool executes", tool: "test_tool", input: {} }]
       }),
       verifier: async () => ({ pass: true })
     }),
