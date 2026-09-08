@@ -7,7 +7,7 @@ const { execSync } = require("child_process");
 const { runJarvisAgent, verifyStep, recover } = require("./jarvis-agent");
 const { executeTool } = require("../autonomous-loop-agent-v7-free");
 const { ToolRegistry } = require("./tool-registry");
-const { AgentLoopGuard } = require("../agent-loop-agent-guard");
+const { AgentLoopGuard } = require("../agent-loop-guard");
 const { TaskStore } = require("./task-store");
 const { AutonomousOrchestrator } = require("./autonomous-orchestrator");
 
