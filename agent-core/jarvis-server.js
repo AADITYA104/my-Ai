@@ -120,7 +120,8 @@ async function executeWithPolicy(step, executionContext = {}) {
 
   const anomaly = loopGuard.checkAnomaly(step.tool, input, policyContext);
   if (anomaly.isLoop) {
-    const error = new Error(`🛡️ [AUTONOMY POLICY]: ${anomaly.policy?.reason || anomaly.warning}`);
+    const reason = anomaly.policy?.reason || anomaly.warning;
+    const error = new Error(`🛡️ [AUTONOMY POLICY]: ${reason}`);
     error.code = anomaly.type === "approval_required"
       ? "APPROVAL_REQUIRED"
       : anomaly.policy?.reason === "Path is outside the configured workspace."
@@ -162,7 +163,8 @@ app.post("/api/jarvis/run", async (req, res) => {
       sessionId,
       taskId: normalizeTaskId(req.body.taskId) || undefined,
       limits: req.body.limits || {},
-      autoApprove
+      autoApprove,
+      availableTools: registry.list()
     });
     res.status(result.success ? 200 : 422).json(result);
   } catch (err) {
@@ -187,7 +189,8 @@ app.post("/api/jarvis/resume", async (req, res) => {
     });
     const result = await orchestrator.resume(taskId, sessionId, {
       autoApprove,
-      loopGuard
+      loopGuard,
+      availableTools: registry.list()
     });
     res.status(result.success ? 200 : 422).json(result);
   } catch (err) {
