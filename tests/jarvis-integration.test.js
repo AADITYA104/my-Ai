@@ -2,7 +2,7 @@
 
 const assert = require("assert");
 const { runJarvisAgent } = require("../agent-core/jarvis-agent");
-const { executeWithPolicy, registry } = require("../agent-core/jarvis-server");
+const { executeWithPolicy, registry, isServerAutoApprovalEnabled } = require("../agent-core/jarvis-server");
 const { AgentLoopGuard } = require("../agent-loop-guard");
 
 (async () => {
@@ -25,10 +25,24 @@ const { AgentLoopGuard } = require("../agent-loop-guard");
   assert.strictEqual(registry.has("read_file"), true);
   assert.strictEqual(registry.has("run_command"), true);
 
+  const previousAutoApprove = process.env.JARVIS_ALLOW_AUTO_APPROVE;
+  delete process.env.JARVIS_ALLOW_AUTO_APPROVE;
+  assert.strictEqual(isServerAutoApprovalEnabled(), false);
   await assert.rejects(
-    executeWithPolicy({ tool: "run_command", input: { command: "echo safe" }, risk: "high" }, { autoApprove: false }),
+    executeWithPolicy({ tool: "run_command", input: { command: "echo safe" }, risk: "high" }, { autoApprove: true }),
     err => err.code === "APPROVAL_REQUIRED"
   );
+
+  process.env.JARVIS_ALLOW_AUTO_APPROVE = "true";
+  assert.strictEqual(isServerAutoApprovalEnabled(), true);
+  const approvedOutput = await executeWithPolicy(
+    { tool: "run_command", input: { command: "echo safe" }, risk: "high" },
+    { autoApprove: true }
+  );
+  assert.match(String(approvedOutput), /safe/i);
+
+  if (previousAutoApprove === undefined) delete process.env.JARVIS_ALLOW_AUTO_APPROVE;
+  else process.env.JARVIS_ALLOW_AUTO_APPROVE = previousAutoApprove;
 
   const safeOutput = await executeWithPolicy(
     { tool: "read_file", input: { file_path: "package.json" }, risk: "low" },
