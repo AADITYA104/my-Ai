@@ -69,8 +69,7 @@ async function runJarvisAgent(goal, context = {}) {
   const taskStore = context.taskStore instanceof TaskStore ? context.taskStore : null;
 
   const executor = context.executor || (async (step, executionContext) => {
-    const toolName = step.tool;
-    if (!toolName) {
+    if (!step.tool) {
       return askModel(
         [{
           role: "user",
@@ -90,7 +89,7 @@ async function runJarvisAgent(goal, context = {}) {
       step.input || context.toolInput || {},
       executionContext && executionContext.recoveryContext
     );
-    return context.registry.execute(toolName, toolInput, context);
+    return context.registry.execute(step.tool, toolInput, context);
   });
 
   const orchestrator = new AutonomousOrchestrator({
