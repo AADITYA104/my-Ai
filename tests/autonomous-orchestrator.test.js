@@ -144,6 +144,31 @@ assert.deepEqual(normalizePlan({ steps: [{ description: "array input", input: ["
   assert.equal(recoveryTimeoutResult.state, "blocked");
   assert.match(recoveryTimeoutResult.reason, /Wall-clock budget exhausted/);
 
+  let policyDeniedExecutions = 0;
+  let policyDeniedRecoveries = 0;
+  const policyDenied = new AutonomousOrchestrator({
+    limits: { maxSteps: 5, maxToolCalls: 5, maxRetries: 5, maxWallTimeMs: 5000 },
+    planner: async () => ({ steps: [{ id: 1, description: "policy denied action", tool: "run_command" }] }),
+    executor: async () => {
+      policyDeniedExecutions++;
+      const error = new Error("Command matched the destructive deny matrix.");
+      error.code = "TOOL_DENIED";
+      throw error;
+    },
+    verifier: async () => ({ pass: false, reason: "should not be reached" }),
+    recovery: async () => {
+      policyDeniedRecoveries++;
+      return { retry: true };
+    }
+  });
+  const policyDeniedResult = await policyDenied.run("policy denial");
+  assert.equal(policyDeniedResult.success, false);
+  assert.equal(policyDeniedResult.state, "failed");
+  assert.equal(policyDeniedExecutions, 1);
+  assert.equal(policyDeniedRecoveries, 0);
+  assert.equal(policyDeniedResult.task.step, 1);
+  assert.match(policyDeniedResult.reason, /Command matched the destructive deny matrix/);
+
   const failed = new AutonomousOrchestrator({
     limits: { maxSteps: 5, maxToolCalls: 5, maxRetries: 2 },
     planner: async () => ({ steps: [{ description: "always fails" }] }),
