@@ -1,0 +1,26 @@
+"use strict";
+
+const assert = require("assert");
+const { evaluateToolCall, isPathAllowed } = require("../agent-core/autonomy-policy");
+const { ToolRegistry } = require("../agent-core/tool-registry");
+const { createTask, transition, canContinue } = require("../agent-core/task-state-machine");
+
+assert.equal(isPathAllowed("src/index.js", process.cwd()), true);
+assert.equal(isPathAllowed("../outside.txt", process.cwd()), false);
+assert.equal(evaluateToolCall("read_file", { file_path: "src/index.js" }, { root: process.cwd() }).allowed, true);
+assert.equal(evaluateToolCall("run_command", { command: "rm -rf /" }, { root: process.cwd() }).allowed, false);
+assert.equal(evaluateToolCall("unknown_tool", {}, {}).allowed, false);
+
+const registry = new ToolRegistry();
+registry.register({ name: "read_file", description: "test", execute: async () => "ok" });
+assert.equal(registry.has("read_file"), true);
+
+(async () => {
+  assert.equal(await registry.execute("read_file", {}, { root: process.cwd() }), "ok");
+  const task = createTask("Build a feature");
+  const planned = transition(task, "planning");
+  const executing = transition(planned, "executing");
+  assert.equal(canContinue(executing).ok, true);
+  assert.throws(() => transition(task, "completed"), /Invalid task transition/);
+  console.log("agent-core tests: PASS");
+})().catch(err => { console.error(err); process.exit(1); });
