@@ -53,7 +53,7 @@ async function recover(step, result, verification) {
   return parseJson(await askModel([{
     role: "user",
     content: `Step: ${step.description}\nCurrent tool input: ${JSON.stringify(step.input || {})}\nPrevious result: ${String(result)}\nVerification: ${JSON.stringify(verification)}`
-  }], system));
+  }], system);
 }
 
 function mergeToolInput(base, recoveryContext) {
@@ -70,7 +70,6 @@ async function runJarvisAgent(goal, context = {}) {
 
   const executor = context.executor || (async (step, executionContext) => {
     const toolName = step.tool;
-
     if (!toolName) {
       return askModel(
         [{
