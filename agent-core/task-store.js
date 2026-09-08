@@ -100,14 +100,14 @@ class TaskStore {
       const record = this.load(taskId, sessionId);
       if (!record) throw new Error(`Persisted task not found: ${taskId}`);
       const existing = record.operations[operationId];
-      if (existing) return { ...existing };
+      if (existing) return { ...existing, claimed: false };
       record.operations[operationId] = {
         state: "started",
         startedAt: new Date().toISOString(),
         executionId: metadata.executionId || operationId
       };
       this.writeRecord(record, taskId, sessionId);
-      return { ...record.operations[operationId] };
+      return { ...record.operations[operationId], claimed: true };
     });
   }
 
@@ -117,7 +117,7 @@ class TaskStore {
       const record = this.load(taskId, sessionId);
       if (!record) throw new Error(`Persisted task not found: ${taskId}`);
       const existing = record.operations[operationId];
-      if (existing && existing.state === "completed") return { ...existing };
+      if (existing && existing.state === "completed") return { ...existing, claimed: false };
       record.operations[operationId] = {
         state: "completed",
         startedAt: existing?.startedAt || new Date().toISOString(),
@@ -126,7 +126,7 @@ class TaskStore {
         result
       };
       this.writeRecord(record, taskId, sessionId);
-      return { ...record.operations[operationId] };
+      return { ...record.operations[operationId], claimed: false };
     });
   }
 
