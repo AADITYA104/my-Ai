@@ -33,7 +33,13 @@ assert.deepEqual(mergeToolInput(base, { toolInputPatch: [] }), base);
   const result = await runJarvisAgent("registry routing", {
     registry,
     planner: async () => ({
-      steps: [{ id: 1, description: "use registry", doneWhen: "result returned", tool: "test_tool", input: { value: "from-plan" } }]
+      steps: [{
+        id: 1,
+        description: "use registry",
+        doneWhen: "result returned",
+        tool: "test_tool",
+        input: { value: "from-plan" }
+      }]
     }),
     verifier: async () => ({ pass: true, reason: "verified" })
   });
@@ -46,7 +52,13 @@ assert.deepEqual(mergeToolInput(base, { toolInputPatch: [] }), base);
   await assert.rejects(
     runJarvisAgent("registry is mandatory", {
       planner: async () => ({
-        steps: [{ id: 1, description: "attempt governed tool", doneWhen: "tool executes", tool: "test_tool", input: {} }]
+        steps: [{
+          id: 1,
+          description: "attempt governed tool",
+          doneWhen: "tool executes",
+          tool: "test_tool",
+          input: {}
+        }]
       }),
       verifier: async () => ({ pass: true })
     }),
