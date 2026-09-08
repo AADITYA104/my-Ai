@@ -31,6 +31,8 @@ jobs:
         run: node tests/agent-core-security.test.js
       - name: Run Autonomous Orchestrator Regression Suite
         run: node tests/autonomous-orchestrator.test.js
+      - name: Run Durable Task Store Regression Suite
+        run: node tests/task-store.test.js
       - name: Run JARVIS Agent Adapter Regression Suite
         run: node tests/jarvis-agent.test.js
       - name: Run JARVIS Agent Integration Regression Suite
