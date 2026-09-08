@@ -20,29 +20,38 @@ class TaskStore {
     return path.join(this.root, `${safeKey(sessionId)}-${safeKey(taskId)}.json`);
   }
 
-  save(task, sessionId = "default_session") {
+  save(task, sessionId = "default_session", snapshot = {}) {
     if (!task || !task.id) throw new Error("A valid task is required.");
     const target = this.pathFor(task.id, sessionId);
     const tmp = `${target}.tmp-${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
-    const payload = JSON.stringify({ version: 1, sessionId: String(sessionId), task }, null, 2);
+    const record = {
+      version: 1,
+      sessionId: String(sessionId),
+      task,
+      plan: snapshot.plan || null,
+      results: Array.isArray(snapshot.results) ? snapshot.results : [],
+      reason: snapshot.reason || null,
+      finalVerification: snapshot.finalVerification || null,
+      savedAt: new Date().toISOString()
+    };
     try {
-      fs.writeFileSync(tmp, payload, { encoding: "utf8", mode: 0o600 });
+      fs.writeFileSync(tmp, JSON.stringify(record, null, 2), { encoding: "utf8", mode: 0o600 });
       fs.renameSync(tmp, target);
     } catch (error) {
       try { fs.unlinkSync(tmp); } catch (_) {}
       throw error;
     }
-    return task;
+    return record;
   }
 
   load(taskId, sessionId = "default_session") {
     const target = this.pathFor(taskId, sessionId);
     try {
       const record = JSON.parse(fs.readFileSync(target, "utf8"));
-      if (!record || record.version !== 1 || !record.task || record.task.id !== taskId) {
+      if (!record || record.version !== 1 || !record.task || record.task.id !== taskId || record.sessionId !== String(sessionId)) {
         throw new Error("Invalid persisted task record.");
       }
-      return record.task;
+      return record;
     } catch (error) {
       if (error.code === "ENOENT") return null;
       throw error;
