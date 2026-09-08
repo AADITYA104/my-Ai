@@ -7,7 +7,7 @@ const { execSync } = require("child_process");
 const { runJarvisAgent, verifyStep, recover } = require("./jarvis-agent");
 const { executeTool } = require("../autonomous-loop-agent-v7-free");
 const { ToolRegistry } = require("./tool-registry");
-const { AgentLoopGuard } = require("../agent-loop-guard");
+const { AgentLoopGuard } = require("../agent-loop-agent-guard");
 const { TaskStore } = require("./task-store");
 const { AutonomousOrchestrator } = require("./autonomous-orchestrator");
 
@@ -19,12 +19,18 @@ const taskStore = new TaskStore();
 
 app.use(express.json({ limit: "2mb" }));
 
-const KNOWN_TOOLS = [
-  "read_file", "write_file", "run_command", "run_code", "list_directory",
-  "search_knowledge", "search_session_memory", "edit_file_surgical", "todo_write",
-  "todo_read", "web_search", "fetch_web_page", "solve_tot", "design_audit",
-  "hierarchical_crew", "debate_group_chat", "invoke_specialist_agent", "generate_3d_model"
+const TOOL_CONTRACTS = [
+  ["read_file", "Read a workspace text file. Input: {file_path:string}"],
+  ["write_file", "Write verified text to a workspace file. Input: {file_path:string,content:string}"],
+  ["run_command", "Run a governed shell command in the workspace. Input: {command:string}"],
+  ["run_code", "Run JavaScript or Python code. Input: {language:string,code:string}"],
+  ["list_directory", "List entries in a workspace directory. Input: {dir_path?:string}"],
+  ["design_audit", "Audit a UI file or folder for design and accessibility anti-patterns. Input: {target:string}"],
+  ["hierarchical_crew", "Delegate a complex mission to the manager-led specialist crew. Input: {mission:string,maxSteps?:number}"],
+  ["debate_group_chat", "Run a multi-agent debate on a contentious design or architecture topic. Input: {topic:string,maxTurns?:number}"],
+  ["generate_3d_model", "Generate a 3D model through the configured Hunyuan3D service. Input: {text?:string,imagePath?:string,texture?:boolean,outputPath?:string}"]
 ];
+const KNOWN_TOOLS = TOOL_CONTRACTS.map(([name]) => name);
 
 function adaptLegacyToolInput(name, input) {
   const value = input && typeof input === "object" ? input : {};
@@ -50,10 +56,10 @@ function resolveWorkspacePath(inputPath = ".") {
   return resolved;
 }
 
-for (const name of KNOWN_TOOLS) {
+for (const [name, description] of TOOL_CONTRACTS) {
   registry.register({
     name,
-    description: `JARVIS governed ${name} tool`,
+    description,
     execute: (input) => {
       if (name === "run_command") {
         const command = String(input.command || "").trim();
@@ -207,4 +213,4 @@ function startServer(port = PORT, host = HOST) {
 
 if (require.main === module) startServer();
 
-module.exports = { app, startServer, executeWithPolicy, registry, isServerAutoApprovalEnabled, taskStore, adaptLegacyToolInput, resolveWorkspacePath };
+module.exports = { app, startServer, executeWithPolicy, registry, isServerAutoApprovalEnabled, taskStore, adaptLegacyToolInput, resolveWorkspacePath, KNOWN_TOOLS };
