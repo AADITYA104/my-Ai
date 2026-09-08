@@ -5,11 +5,13 @@ const { runJarvisAgent } = require("./jarvis-agent");
 const { executeTool } = require("../autonomous-loop-agent-v7-free");
 const { ToolRegistry } = require("./tool-registry");
 const { AgentLoopGuard } = require("../agent-loop-guard");
+const { TaskStore } = require("./task-store");
 
 const app = express();
 const PORT = Number(process.env.JARVIS_PORT || 3010);
 const HOST = process.env.JARVIS_HOST || "127.0.0.1";
 const registry = new ToolRegistry();
+const taskStore = new TaskStore();
 
 app.use(express.json({ limit: "2mb" }));
 
@@ -83,10 +85,15 @@ app.post("/api/jarvis/run", async (req, res) => {
   try {
     const autoApprove = req.body.autoApprove === true && isServerAutoApprovalEnabled();
     const loopGuard = new AgentLoopGuard();
+    const sessionId = typeof req.body.sessionId === "string" && req.body.sessionId.trim()
+      ? req.body.sessionId.trim()
+      : "default_session";
     const result = await runJarvisAgent(goal, {
-      sessionId: req.body.sessionId || "default_session",
+      sessionId,
+      taskId: typeof req.body.taskId === "string" && req.body.taskId.trim() ? req.body.taskId.trim() : undefined,
       limits: req.body.limits || {},
       autoApprove,
+      taskStore,
       executor: (step, context) => executeWithPolicy(step, { ...context, autoApprove, loopGuard })
     });
     res.status(result.success ? 200 : 422).json(result);
@@ -103,4 +110,4 @@ function startServer(port = PORT, host = HOST) {
 
 if (require.main === module) startServer();
 
-module.exports = { app, startServer, executeWithPolicy, registry, isServerAutoApprovalEnabled };
+module.exports = { app, startServer, executeWithPolicy, registry, isServerAutoApprovalEnabled, taskStore };
