@@ -2,7 +2,7 @@
 
 const assert = require("assert");
 const { runJarvisAgent } = require("../agent-core/jarvis-agent");
-const { executeWithPolicy } = require("../agent-core/jarvis-server");
+const { executeWithPolicy, registry } = require("../agent-core/jarvis-server");
 
 (async () => {
   let executions = 0;
@@ -21,14 +21,20 @@ const { executeWithPolicy } = require("../agent-core/jarvis-server");
   assert.strictEqual(result.state, "completed");
   assert.strictEqual(executions, 1);
 
-  assert.throws(
-    () => executeWithPolicy({ tool: "run_command", input: { command: "echo safe" }, risk: "high" }, { autoApprove: false }),
+  assert.strictEqual(registry.has("read_file"), true);
+  assert.strictEqual(registry.has("run_command"), true);
+
+  await assert.rejects(
+    executeWithPolicy({ tool: "run_command", input: { command: "echo safe" }, risk: "high" }, { autoApprove: false }),
     err => err.code === "APPROVAL_REQUIRED"
   );
 
-  const safeOutput = executeWithPolicy({ tool: "read_file", input: { file_path: "package.json" }, risk: "low" }, { autoApprove: false });
-  assert.ok(safeOutput && typeof safeOutput.then === "function");
-  await safeOutput;
+  const safeOutput = await executeWithPolicy(
+    { tool: "read_file", input: { file_path: "package.json" }, risk: "low" },
+    { autoApprove: false }
+  );
+  assert.ok(typeof safeOutput === "string");
+  assert.ok(safeOutput.length > 0);
 
   console.log("jarvis integration tests: PASS");
 })().catch(err => {
