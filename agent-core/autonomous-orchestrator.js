@@ -1,5 +1,6 @@
 "use strict";
 
+const crypto = require("crypto");
 const { createTask, transition, canContinue, isTerminal } = require("./task-state-machine");
 const { DEFAULTS } = require("./autonomy-policy");
 const { TaskStore } = require("./task-store");
@@ -16,6 +17,11 @@ const NON_RETRYABLE_ERROR_CODES = new Set([
 function isRetryableError(error) {
   if (!error) return true;
   return !NON_RETRYABLE_ERROR_CODES.has(error.code);
+}
+
+function createOperationId(sessionId, taskId, stepId, attempt, phase = "execute") {
+  const material = [sessionId, taskId, stepId, attempt, phase].map(value => String(value)).join("\0");
+  return crypto.createHash("sha256").update(material).digest("hex").slice(0, 32);
 }
 
 function normalizePlan(plan, goal) {
@@ -198,6 +204,8 @@ class AutonomousOrchestrator {
         task = transition(task, nextState, `Executing step ${step.id}`);
         attempts += 1;
         task = { ...task, step: task.step + 1, toolCalls: task.toolCalls + (step.tool ? 1 : 0) };
+        const executionId = createOperationId(sessionId, task.id, step.id, attempts, "execute");
+        const operationContext = { executionId, operationId: executionId };
         this.persist(task, sessionId, plan, results);
 
         try {
@@ -208,6 +216,7 @@ class AutonomousOrchestrator {
             recoveryContext,
             task,
             deadline,
+            ...operationContext,
             ...context
           }), deadline, `step ${step.id} execution`);
           task = transition(task, "verifying", `Step ${step.id} execution finished`);
@@ -217,27 +226,30 @@ class AutonomousOrchestrator {
             attempt: attempts,
             task,
             deadline,
+            ...operationContext,
             ...context
           }), deadline, `step ${step.id} verification`);
           if (lastVerification && lastVerification.pass === true) {
             task = transition(task, "executing", `Step ${step.id} verified`);
-            results.push({ step, attempts, result: stepResult, verification: lastVerification });
+            results.push({ step, attempts, executionId, result: stepResult, verification: lastVerification });
             completedStepIds.add(step.id);
             this.persist(task, sessionId, plan, results);
             stepFinished = true;
             break;
           }
           if (attempts >= maxRetries) break;
+          const recoveryId = createOperationId(sessionId, task.id, step.id, attempts, "recovery");
           recoveryContext = typeof this.recovery === "function"
-            ? await withDeadline(() => this.recovery(step, stepResult, lastVerification, { goal, plan, attempt: attempts, task, deadline, ...context }), deadline, `step ${step.id} recovery`)
+            ? await withDeadline(() => this.recovery(step, stepResult, lastVerification, { goal, plan, attempt: attempts, task, deadline, executionId, operationId: recoveryId, ...context }), deadline, `step ${step.id} recovery`)
             : { reason: "Verification failed", previousResult: stepResult };
           this.persist(task, sessionId, plan, results, lastVerification?.reason || "Verification failed");
         } catch (error) {
           lastVerification = { pass: false, reason: error.message, code: error.code || null };
           if (!isRetryableError(error) || attempts >= maxRetries) break;
           try {
+            const recoveryId = createOperationId(sessionId, task.id, step.id, attempts, "recovery");
             recoveryContext = typeof this.recovery === "function"
-              ? await withDeadline(() => this.recovery(step, stepResult, lastVerification, { goal, plan, attempt: attempts, task, deadline, error, ...context }), deadline, `step ${step.id} recovery`)
+              ? await withDeadline(() => this.recovery(step, stepResult, lastVerification, { goal, plan, attempt: attempts, task, deadline, error, executionId, operationId: recoveryId, ...context }), deadline, `step ${step.id} recovery`)
               : { reason: error.message };
           } catch (recoveryError) {
             recoveryContext = { reason: error.message, recoveryError: recoveryError.message };
@@ -300,4 +312,4 @@ class AutonomousOrchestrator {
   }
 }
 
-module.exports = { AutonomousOrchestrator, normalizePlan, withDeadline, isRetryableError };
+module.exports = { AutonomousOrchestrator, normalizePlan, withDeadline, isRetryableError, createOperationId };
