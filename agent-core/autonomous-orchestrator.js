@@ -2,6 +2,7 @@
 
 const { createTask, transition, canContinue } = require("./task-state-machine");
 const { DEFAULTS } = require("./autonomy-policy");
+const { TaskStore } = require("./task-store");
 
 function normalizePlan(plan, goal) {
   if (!plan || typeof plan !== "object") throw new Error("Planner returned no plan.");
@@ -31,6 +32,12 @@ class AutonomousOrchestrator {
     this.executor = options.executor;
     this.verifier = options.verifier;
     this.recovery = options.recovery;
+    this.taskStore = options.taskStore || null;
+  }
+
+  persist(task, sessionId, plan, results, reason = null, finalVerification = null) {
+    if (!this.taskStore) return;
+    this.taskStore.save(task, sessionId, { plan, results, reason, finalVerification });
   }
 
   async run(goal, context = {}) {
@@ -43,16 +50,20 @@ class AutonomousOrchestrator {
     const deadline = Number.isFinite(this.limits.maxWallTimeMs) && this.limits.maxWallTimeMs >= 0
       ? startedAt + this.limits.maxWallTimeMs
       : Infinity;
-    let task = createTask(goal, { ...context, phase: "planner", startedAt });
+    const sessionId = context.sessionId || "default_session";
+    let task = createTask(goal, { ...context, phase: "planner", startedAt, id: context.taskId });
     let plan;
+    this.persist(task, sessionId, null, []);
 
     try {
       plan = this.plan ? normalizePlan(this.plan, goal) : normalizePlan(await this.planner(goal, context), goal);
       task = transition(task, "planning", "Plan created");
+      this.persist(task, sessionId, plan, []);
     } catch (error) {
       task = transition(task, "planning", "Planner failed");
       task = transition(task, "failed", `Planning failed: ${error.message}`);
-      return this.snapshot(task, null, [], error.message);
+      this.persist(task, sessionId, plan, [], error.message);
+      return this.snapshot(task, plan, [], error.message);
     }
 
     const results = [];
@@ -61,12 +72,14 @@ class AutonomousOrchestrator {
     for (const step of plan.steps) {
       if (Date.now() >= deadline) {
         task = transition(task, "blocked", "Wall-clock budget exhausted");
+        this.persist(task, sessionId, plan, results, "Wall-clock budget exhausted");
         return this.snapshot(task, plan, results, "Wall-clock budget exhausted");
       }
 
       const budget = canContinue(task, this.limits);
       if (!budget.ok) {
         task = transition(task, "blocked", budget.reason);
+        this.persist(task, sessionId, plan, results, budget.reason);
         return this.snapshot(task, plan, results, budget.reason);
       }
 
@@ -79,13 +92,15 @@ class AutonomousOrchestrator {
       while (attempts < maxRetries) {
         if (Date.now() >= deadline) {
           task = transition(task, "blocked", "Wall-clock budget exhausted");
+          this.persist(task, sessionId, plan, results, "Wall-clock budget exhausted");
           return this.snapshot(task, plan, results, "Wall-clock budget exhausted");
         }
 
         const nextState = task.state === "planning" || task.state === "verifying" ? "executing" : task.state;
         task = transition(task, nextState, `Executing step ${step.id}`);
         attempts += 1;
-        task = { ...task, step: task.step + 1, toolCalls: task.toolCalls + 1 };
+        task = { ...task, step: task.step + 1, toolCalls: task.toolCalls + (step.tool ? 1 : 0) };
+        this.persist(task, sessionId, plan, results);
 
         try {
           stepResult = await this.executor(step, {
@@ -107,6 +122,7 @@ class AutonomousOrchestrator {
           if (lastVerification && lastVerification.pass === true) {
             task = transition(task, "executing", `Step ${step.id} verified`);
             results.push({ step, attempts, result: stepResult, verification: lastVerification });
+            this.persist(task, sessionId, plan, results);
             stepFinished = true;
             break;
           }
@@ -114,6 +130,7 @@ class AutonomousOrchestrator {
           recoveryContext = typeof this.recovery === "function"
             ? await this.recovery(step, stepResult, lastVerification, { goal, plan, attempt: attempts, task, deadline })
             : { reason: "Verification failed", previousResult: stepResult };
+          this.persist(task, sessionId, plan, results, lastVerification?.reason || "Verification failed");
         } catch (error) {
           lastVerification = { pass: false, reason: error.message };
           if (attempts >= maxRetries) break;
@@ -124,16 +141,20 @@ class AutonomousOrchestrator {
           } catch (recoveryError) {
             recoveryContext = { reason: error.message, recoveryError: recoveryError.message };
           }
+          this.persist(task, sessionId, plan, results, error.message);
         }
       }
 
       if (!stepFinished) {
         task = transition(task, "failed", `Step ${step.id} failed after ${attempts} attempt(s)`);
-        return this.snapshot(task, plan, results, lastVerification?.reason || "Step verification failed");
+        const reason = lastVerification?.reason || "Step verification failed";
+        this.persist(task, sessionId, plan, results, reason);
+        return this.snapshot(task, plan, results, reason);
       }
     }
 
     task = transition(task, "verifying", "All planned steps executed");
+    this.persist(task, sessionId, plan, results);
     let finalVerification;
     try {
       finalVerification = await this.verifier(
@@ -143,15 +164,19 @@ class AutonomousOrchestrator {
       );
     } catch (error) {
       task = transition(task, "failed", `Final verification error: ${error.message}`);
+      this.persist(task, sessionId, plan, results, error.message);
       return this.snapshot(task, plan, results, error.message);
     }
 
     if (!finalVerification || finalVerification.pass !== true) {
       task = transition(task, "failed", "Final verification failed");
-      return this.snapshot(task, plan, results, finalVerification?.reason || "Final verification failed", finalVerification);
+      const reason = finalVerification?.reason || "Final verification failed";
+      this.persist(task, sessionId, plan, results, reason, finalVerification);
+      return this.snapshot(task, plan, results, reason, finalVerification);
     }
 
     task = transition(task, "completed", "Final verification passed");
+    this.persist(task, sessionId, plan, results, null, finalVerification);
     return this.snapshot(task, plan, results, null, finalVerification);
   }
 
