@@ -3,6 +3,7 @@
 const { callUniversalLLM } = require("../llm-providers");
 const { criticStep } = require("../autonomous-loop-agent-v7-free");
 const { AutonomousOrchestrator } = require("./autonomous-orchestrator");
+const { TaskStore } = require("./task-store");
 
 async function askModel(messages, system) {
   const response = await callUniversalLLM(messages, system);
@@ -79,15 +80,17 @@ async function runJarvisAgent(goal, context = {}) {
   const verifier = context.verifier || verifyStep;
   const recovery = context.recovery || recover;
 
+  const taskStore = context.taskStore instanceof TaskStore ? context.taskStore : null;
   const orchestrator = new AutonomousOrchestrator({
     limits: context.limits || {},
     planner,
     executor,
     verifier,
-    recovery
+    recovery,
+    taskStore
   });
 
   return orchestrator.run(goal, context);
 }
 
-module.exports = { runJarvisAgent, createPlan, verifyStep, recover, mergeToolInput, askModel, parseJson };
+module.exports = { runJarvisAgent, createPlan, verifyStep, recover, mergeToolInput, askModel, parseJson }; 
