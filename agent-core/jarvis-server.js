@@ -4,6 +4,7 @@ const express = require("express");
 const { runJarvisAgent } = require("./jarvis-agent");
 const { executeTool } = require("../autonomous-loop-agent-v7-free");
 const { ToolRegistry } = require("./tool-registry");
+const { AgentLoopGuard } = require("../agent-loop-guard");
 
 const app = express();
 const PORT = Number(process.env.JARVIS_PORT || 3010);
@@ -31,12 +32,33 @@ async function executeWithPolicy(step, executionContext = {}) {
   if (!step || typeof step.tool !== "string" || !step.tool.trim()) {
     throw new Error("A valid tool name is required.");
   }
+
   const input = step.input && typeof step.input === "object" ? step.input : {};
-  return registry.execute(step.tool, input, {
+  const policyContext = {
     root: process.cwd(),
     sideEffectClass: step.risk === "high" ? "external_side_effect" : undefined,
     autoApprove: executionContext.autoApprove === true
-  });
+  };
+  const loopGuard = executionContext.loopGuard instanceof AgentLoopGuard
+    ? executionContext.loopGuard
+    : new AgentLoopGuard();
+
+  const anomaly = loopGuard.checkAnomaly(step.tool, input, policyContext);
+  if (anomaly.isLoop) {
+    const error = new Error(anomaly.warning);
+    error.code = anomaly.type === "approval_required" ? "APPROVAL_REQUIRED" : "LOOP_GUARD_BLOCKED";
+    error.policy = anomaly.policy;
+    throw error;
+  }
+
+  try {
+    const result = await registry.execute(step.tool, input, policyContext);
+    loopGuard.record(step.tool, input, result, false);
+    return result;
+  } catch (error) {
+    loopGuard.record(step.tool, input, error.message, true);
+    throw error;
+  }
 }
 
 app.get("/health", (_req, res) => {
@@ -54,11 +76,12 @@ app.post("/api/jarvis/run", async (req, res) => {
 
   try {
     const autoApprove = req.body.autoApprove === true;
+    const loopGuard = new AgentLoopGuard();
     const result = await runJarvisAgent(goal, {
       sessionId: req.body.sessionId || "default_session",
       limits: req.body.limits || {},
       autoApprove,
-      executor: (step, context) => executeWithPolicy(step, { ...context, autoApprove })
+      executor: (step, context) => executeWithPolicy(step, { ...context, autoApprove, loopGuard })
     });
     res.status(result.success ? 200 : 422).json(result);
   } catch (err) {
