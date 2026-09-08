@@ -27,6 +27,8 @@ jobs:
         run: node tests/audit.test.js
       - name: Run Autonomy Foundation Regression Suite
         run: node tests/agent-core.test.js
+      - name: Run Autonomy Security Regression Suite
+        run: node tests/agent-core-security.test.js
       - name: Run 25-Vector Reliability & Guardrails Test Suite
         run: node tests/agent-reliability.test.js
       - name: Run Integration Smoke Test (real runAgent loop + real tools, no API keys needed)
