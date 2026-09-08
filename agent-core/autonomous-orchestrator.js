@@ -228,7 +228,7 @@ class AutonomousOrchestrator {
             : { reason: "Verification failed", previousResult: stepResult };
           this.persist(task, sessionId, plan, results, lastVerification?.reason || "Verification failed");
         } catch (error) {
-          if (claimedOperation?.claimed && error.code !== "OPERATION_IN_DOUBT") {
+          if (claimedOperation?.claimed && error.code !== "OPERATION_IN_DOUBT" && error.code !== "RETRYABLE_EXECUTOR_ERROR") {
             const ambiguousError = new Error(`Operation ${idempotencyKey} failed after being claimed; automatic retry is blocked to prevent duplicate side effects.`);
             ambiguousError.code = "OPERATION_IN_DOUBT";
             error = ambiguousError;
@@ -292,9 +292,9 @@ class AutonomousOrchestrator {
     return this.snapshot(task, plan, results, null, finalVerification);
   }
 
-  snapshot(task, plan, results, reason, finalVerification = null) {
-    return { success: task.state === "completed", state: task.state, task, plan, results, reason: reason || null, finalVerification };
+  snapshot(task, plan, results, reason = null, finalVerification = null) {
+    return { success: task.state === "completed", state: task.state, task, plan, results, reason, finalVerification };
   }
 }
 
-module.exports = { AutonomousOrchestrator, normalizePlan, withDeadline, isRetryableError, createOperationId, createIdempotencyKey };
+module.exports = { AutonomousOrchestrator, normalizePlan, createOperationId, createIdempotencyKey, withDeadline, NON_RETRYABLE_ERROR_CODES, isRetryableError };
