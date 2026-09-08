@@ -1,215 +1,174 @@
 /**
- * ============================================================================
- *  WORKER-THREAD CODE SANDBOX (`run_code`) — 2026 ARCHITECTURE
- *  Ported from deepseek-harness-master/packages/code-runtime/code-runtime-worker-thread
- *  - Worker thread isolation with memory cap & wall-time budget
- *  - Host tool binding bridge (readFile, writeFile, runCommand, searchKnowledge)
- *  - Output ledger with capture & truncation guards
- *  - Single-turn batch execution of complex multi-step operations
- * ============================================================================
+ * Capability-based code runner.
+ *
+ * IMPORTANT: Worker Threads are an isolation/concurrency primitive, not a
+ * security boundary. Untrusted code must never be treated as safe merely
+ * because it runs in this worker. The runner therefore exposes only a small
+ * capability object and rejects attempts to access Node host capabilities.
+ * A production deployment handling hostile code should additionally run this
+ * component in a separately sandboxed process/container with OS restrictions.
  */
 "use strict";
 
-const { Worker, isMainThread, parentPort, workerData } = require("worker_threads");
-const fs = require("fs");
-const path = require("path");
-const { execSync } = require("child_process");
+const { Worker } = require("worker_threads");
 
 const DEFAULT_TIMEOUT_MS = 30000;
 const MAX_TIMEOUT_MS = 60000;
-const MAX_OUTPUT_BYTES = 64 * 1024 * 1024; // 64MB cap
+const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 
-// ---------------------------------------------------------------------------
-// 1. WORKER SCRIPT (Executed inside the Worker thread)
-// ---------------------------------------------------------------------------
-const WORKER_INLINE_CODE = `
-const { parentPort, workerData } = require('worker_threads');
-const fs = require('fs');
-const path = require('path');
-const { execSync } = require('child_process');
+// These capabilities are intentionally not Node modules. Host-side callers
+// may inject policy-checked implementations through options.capabilities.
+const DEFAULT_CAPABILITIES = Object.freeze({
+  readFile: async () => ({ success: false, error: "readFile capability is not configured" }),
+  writeFile: async () => ({ success: false, error: "writeFile capability is not configured" }),
+  runCommand: async () => ({ success: false, error: "runCommand capability is not configured" }),
+  listDirectory: async () => ({ success: false, error: "listDirectory capability is not configured" })
+});
 
-// Captured console output
+const FORBIDDEN_SOURCE = [
+  /\brequire\s*\(/,
+  /\bprocess\b/,
+  /\bglobalThis\b/,
+  /\bglobal\b/,
+  /\bmodule\b/,
+  /\bexports\b/,
+  /\b__dirname\b/,
+  /\b__filename\b/,
+  /\bchild_process\b/,
+  /\bworker_threads\b/,
+  /\bnode:fs\b/,
+  /\bnode:path\b/,
+  /\bfrom\s+['"]fs['"]/, 
+  /\bfrom\s+['"]path['"]/, 
+  /\bfrom\s+['"]child_process['"]/, 
+  /\beval\s*\(/,
+  /\bFunction\s*\(/,
+  /\bconstructor\s*\[\s*['"]constructor['"]\s*\]/
+];
+
+function validateSource(code) {
+  if (typeof code !== "string" || !code.trim()) return { allowed: false, reason: "No executable code supplied." };
+  for (const pattern of FORBIDDEN_SOURCE) {
+    if (pattern.test(code)) return { allowed: false, reason: `Sandbox source rejected by capability policy: ${pattern}` };
+  }
+  return { allowed: true };
+}
+
+function makeWorkerCode() {
+  return `
+const { parentPort, workerData } = require("worker_threads");
+
 const logs = [];
-const customConsole = {
-  log: (...args) => { logs.push(args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')); },
-  error: (...args) => { logs.push('[ERROR] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')); },
-  warn: (...args) => { logs.push('[WARN] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')); },
-  info: (...args) => { logs.push('[INFO] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')); }
-};
+const safeConsole = Object.freeze({
+  log: (...args) => logs.push(args.map(String).join(" ")),
+  info: (...args) => logs.push("[INFO] " + args.map(String).join(" ")),
+  warn: (...args) => logs.push("[WARN] " + args.map(String).join(" ")),
+  error: (...args) => logs.push("[ERROR] " + args.map(String).join(" "))
+});
 
-// Tool bindings exposed to the sandboxed script
-const tools = {
-  readFile: (filePath) => {
-    try {
-      const resolved = path.resolve(workerData.cwd || process.cwd(), filePath);
-      if (!fs.existsSync(resolved)) return { success: false, error: 'File not found: ' + filePath };
-      return { success: true, content: fs.readFileSync(resolved, 'utf-8') };
-    } catch (e) {
-      return { success: false, error: e.message };
-    }
-  },
-  writeFile: (filePath, content) => {
-    try {
-      const resolved = path.resolve(workerData.cwd || process.cwd(), filePath);
-      const dir = path.dirname(resolved);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(resolved, content, 'utf-8');
-      return { success: true, path: resolved };
-    } catch (e) {
-      return { success: false, error: e.message };
-    }
-  },
-  runCommand: (cmd, timeoutMs = 15000) => {
-    try {
-      const out = execSync(cmd, {
-        cwd: workerData.cwd || process.cwd(),
-        timeout: timeoutMs,
-        encoding: 'utf-8',
-        stdio: ['ignore', 'pipe', 'pipe']
-      });
-      return { success: true, output: out.trim() };
-    } catch (e) {
-      return { success: false, output: (e.stdout || '').toString(), error: (e.stderr || e.message).toString() };
-    }
-  },
-  listDirectory: (dirPath = '.') => {
-    try {
-      const resolved = path.resolve(workerData.cwd || process.cwd(), dirPath);
-      if (!fs.existsSync(resolved)) return { success: false, error: 'Directory not found' };
-      const items = fs.readdirSync(resolved, { withFileTypes: true }).map(d => ({
-        name: d.name,
-        isDirectory: d.isDirectory(),
-        size: d.isFile() ? fs.statSync(path.join(resolved, d.name)).size : null
-      }));
-      return { success: true, items };
-    } catch (e) {
-      return { success: false, error: e.message };
+const pending = new Map();
+let nextRequestId = 1;
+
+function callCapability(name, args) {
+  return new Promise((resolve) => {
+    const id = nextRequestId++;
+    pending.set(id, resolve);
+    parentPort.postMessage({ type: "capability", id, name, args });
+  });
+}
+
+const tools = Object.freeze({
+  readFile: (...args) => callCapability("readFile", args),
+  writeFile: (...args) => callCapability("writeFile", args),
+  runCommand: (...args) => callCapability("runCommand", args),
+  listDirectory: (...args) => callCapability("listDirectory", args)
+});
+
+parentPort.on("message", (message) => {
+  if (message && message.type === "capability_result") {
+    const resolve = pending.get(message.id);
+    if (resolve) {
+      pending.delete(message.id);
+      resolve(message.value);
     }
   }
-};
+});
 
 (async () => {
   try {
-    const userCode = workerData.code;
-    // Wrap inside async IIFE with tools and console available
-    const runFn = new Function('tools', 'console', 'fs', 'path', 'require', \`
-      return (async () => {
-        \${userCode}
-      })();
-    \`);
-    
-    const result = await runFn(tools, customConsole, fs, path, require);
-    parentPort.postMessage({
-      success: true,
-      result: result !== undefined ? result : null,
-      logs: logs.join('\\n')
-    });
-  } catch (err) {
-    parentPort.postMessage({
-      success: false,
-      error: err.stack || err.message,
-      logs: logs.join('\\n')
-    });
+    // Do not pass fs/path/require/process into the generated function.
+    const run = new Function("tools", "console", "return (async () => {\\n" + workerData.code + "\\n})();");
+    const result = await run(tools, safeConsole);
+    parentPort.postMessage({ type: "result", success: true, result: result === undefined ? null : result, logs: logs.join("\\n") });
+  } catch (error) {
+    parentPort.postMessage({ type: "result", success: false, error: error.stack || error.message, logs: logs.join("\\n") });
   }
 })();
 `;
+}
 
-// ---------------------------------------------------------------------------
-// 2. SANDBOX RUNNER
-// ---------------------------------------------------------------------------
-
-/**
- * Executes user/agent code in a sandboxed Worker Thread with timeout & memory cap.
- *
- * @param {string} code - JavaScript code string to execute
- * @param {Object} options - { timeoutMs, cwd, maxHeapMb }
- * @returns {Promise<{ success: boolean, result: any, logs: string, durationMs: number }>}
- */
 async function runSandboxedCode(code, options = {}) {
+  const validation = validateSource(code);
+  if (!validation.allowed) return { success: false, error: validation.reason, logs: "", durationMs: 0 };
+
   const timeoutMs = Math.min(Math.max(options.timeoutMs || DEFAULT_TIMEOUT_MS, 1000), MAX_TIMEOUT_MS);
-  const cwd = options.cwd || process.cwd();
-  const maxHeapMb = options.maxHeapMb || 256;
+  const maxHeapMb = Math.min(Math.max(options.maxHeapMb || 256, 64), 512);
+  const capabilities = { ...DEFAULT_CAPABILITIES, ...(options.capabilities || {}) };
   const startTime = Date.now();
 
   return new Promise((resolve) => {
     let finished = false;
-    let timer = null;
-
-    const worker = new Worker(WORKER_INLINE_CODE, {
+    const worker = new Worker(makeWorkerCode(), {
       eval: true,
-      workerData: { code, cwd },
-      resourceLimits: {
-        maxOldGenerationSizeMb: maxHeapMb,
-        maxYoungGenerationSizeMb: 64
-      }
+      workerData: { code },
+      resourceLimits: { maxOldGenerationSizeMb: maxHeapMb, maxYoungGenerationSizeMb: 64 }
     });
 
-    const cleanup = () => {
-      if (timer) clearTimeout(timer);
+    const finish = (result) => {
+      if (finished) return;
       finished = true;
+      clearTimeout(timer);
+      worker.terminate().catch(() => {});
+      resolve({ ...result, durationMs: Date.now() - startTime });
     };
 
-    timer = setTimeout(() => {
-      if (!finished) {
-        cleanup();
-        worker.terminate().catch(() => {});
-        resolve({
-          success: false,
-          error: `Execution timed out after ${timeoutMs}ms`,
-          logs: `[TIMEOUT]: Worker thread exceeded wall-clock limit (${timeoutMs}ms) and was terminated.`,
-          durationMs: Date.now() - startTime
-        });
-      }
-    }, timeoutMs);
+    const timer = setTimeout(() => finish({
+      success: false,
+      error: `Execution timed out after ${timeoutMs}ms`,
+      logs: `[TIMEOUT]: Worker exceeded ${timeoutMs}ms and was terminated.`
+    }), timeoutMs);
 
-    worker.on("message", (msg) => {
-      if (!finished) {
-        cleanup();
-        worker.terminate().catch(() => {});
-        resolve({
-          success: msg.success,
-          result: msg.result,
-          error: msg.error,
-          logs: msg.logs || "",
-          durationMs: Date.now() - startTime
-        });
+    worker.on("message", async (message) => {
+      if (finished) return;
+      if (message?.type === "result") {
+        finish({ success: message.success, result: message.result, error: message.error, logs: truncateOutput(message.logs || "") });
+        return;
       }
-    });
-
-    worker.on("error", (err) => {
-      if (!finished) {
-        cleanup();
-        resolve({
-          success: false,
-          error: err.message,
-          logs: `[WORKER ERROR]: ${err.stack || err.message}`,
-          durationMs: Date.now() - startTime
-        });
-      }
-    });
-
-    worker.on("exit", (code) => {
-      if (!finished) {
-        cleanup();
-        if (code !== 0) {
-          resolve({
-            success: false,
-            error: `Worker exited with non-zero code: ${code}`,
-            logs: "",
-            durationMs: Date.now() - startTime
-          });
+      if (message?.type === "capability") {
+        const capability = capabilities[message.name];
+        if (typeof capability !== "function") {
+          worker.postMessage({ type: "capability_result", id: message.id, value: { success: false, error: `Capability denied: ${message.name}` } });
+          return;
+        }
+        try {
+          const value = await capability(...(Array.isArray(message.args) ? message.args : []));
+          worker.postMessage({ type: "capability_result", id: message.id, value });
+        } catch (error) {
+          worker.postMessage({ type: "capability_result", id: message.id, value: { success: false, error: error.message } });
         }
       }
+    });
+
+    worker.on("error", (error) => finish({ success: false, error: error.message, logs: `[WORKER ERROR]: ${error.stack || error.message}` }));
+    worker.on("exit", (code) => {
+      if (!finished && code !== 0) finish({ success: false, error: `Worker exited with non-zero code: ${code}`, logs: "" });
     });
   });
 }
 
-// ---------------------------------------------------------------------------
-// 3. EXPORTS
-// ---------------------------------------------------------------------------
+function truncateOutput(value) {
+  const text = String(value || "");
+  return Buffer.byteLength(text, "utf8") <= MAX_OUTPUT_BYTES ? text : text.slice(0, MAX_OUTPUT_BYTES) + "\n[OUTPUT TRUNCATED]";
+}
 
-module.exports = {
-  runSandboxedCode,
-  DEFAULT_TIMEOUT_MS,
-  MAX_TIMEOUT_MS
-};
+module.exports = { runSandboxedCode, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, validateSource };
