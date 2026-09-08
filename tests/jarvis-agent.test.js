@@ -22,6 +22,12 @@ assert.deepEqual(base, {
 });
 assert.deepEqual(mergeToolInput(base, null), base);
 assert.deepEqual(mergeToolInput(base, { toolInputPatch: [] }), base);
+assert.deepEqual(mergeToolInput(base, { toolInputPatch: { extra: "ok" } }), {
+  file_path: "safe.txt",
+  content: "before",
+  unchanged: true,
+  extra: "ok"
+});
 
 (async () => {
   let registryCalls = 0;
