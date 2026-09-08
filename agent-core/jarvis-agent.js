@@ -23,7 +23,7 @@ async function createPlan(goal, context = {}) {
     "Never invent tool results or claim an action was performed.",
     "Prefer 1-6 concrete steps.",
     "For tool steps, include an exact JSON object in input using only the tool's documented input fields.",
-    "Return ONLY JSON: {\"goal\":string,\"assumptions\":string[],\"steps\":[{\"id\":number,\"description\":string,\"doneWhen\":string,\"tool\":string|null,\"input\":object,\"risk\":\"low\"|\"normal\"|\"high\"}]}"
+    "Return ONLY JSON: {\"goal\":string,\"assumptions\":string[],\"steps\":[{\"id\":number,\"description\":string,\"doneWhen\":string,\"tool\":string|null,\"input\":object,\"risk\":\"low\"|\"normal\"|\"high\"}] }"
   ].join(" ");
   return parseJson(await askModel([{ role: "user", content: `Goal: ${goal}\nContext: ${JSON.stringify(context)}` }], system));
 }
@@ -59,25 +59,30 @@ function mergeToolInput(base, recoveryContext) {
 }
 
 async function runJarvisAgent(goal, context = {}) {
+  const planner = context.planner || createPlan;
+  const executor = context.executor || (async (step, executionContext) => {
+    const toolName = step.tool;
+    if (!toolName) {
+      return await askModel([{
+        role: "user",
+        content: `Execute this reasoning-only step and return the concrete result:\n${step.description}\nSuccess criteria: ${step.doneWhen}`
+      }], "Act as an execution specialist. Do not claim external side effects unless a tool actually performs them.");
+    }
+    const toolInput = mergeToolInput(step.input || context.toolInput || {}, executionContext.recoveryContext);
+    return executeTool(toolName, toolInput);
+  });
+  const verifier = context.verifier || verifyStep;
+  const recovery = context.recovery || recover;
+
   const orchestrator = new AutonomousOrchestrator({
     limits: context.limits || {},
-    planner: createPlan,
-    executor: async (step, executionContext) => {
-      const toolName = step.tool;
-      if (!toolName) {
-        return await askModel([{
-          role: "user",
-          content: `Execute this reasoning-only step and return the concrete result:\n${step.description}\nSuccess criteria: ${step.doneWhen}`
-        }], "Act as an execution specialist. Do not claim external side effects unless a tool actually performs them.");
-      }
-      const toolInput = mergeToolInput(step.input || context.toolInput || {}, executionContext.recoveryContext);
-      return executeTool(toolName, toolInput);
-    },
-    verifier: verifyStep,
-    recovery: recover
+    planner,
+    executor,
+    verifier,
+    recovery
   });
 
   return orchestrator.run(goal, context);
 }
 
-module.exports = { runJarvisAgent, createPlan, verifyStep, recover, mergeToolInput };
+module.exports = { runJarvisAgent, createPlan, verifyStep, recover, mergeToolInput, askModel, parseJson };
