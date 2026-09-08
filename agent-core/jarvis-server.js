@@ -45,10 +45,25 @@ for (const name of KNOWN_TOOLS) {
   });
 }
 
-// A client request must never be able to grant itself approval for high-risk work.
-// Auto-approval is an explicit server/operator configuration, not user input.
 function isServerAutoApprovalEnabled() {
   return process.env.JARVIS_ALLOW_AUTO_APPROVE === "true";
+}
+
+function normalizeSessionId(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : "default_session";
+}
+
+function normalizeTaskId(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function createExecutionContext(autoApprove, loopGuard) {
+  return {
+    autoApprove,
+    loopGuard,
+    taskStore,
+    executor: (step, context) => executeWithPolicy(step, { ...context, autoApprove, loopGuard })
+  };
 }
 
 async function executeWithPolicy(step, executionContext = {}) {
@@ -100,20 +115,45 @@ app.post("/api/jarvis/run", async (req, res) => {
   try {
     const autoApprove = req.body.autoApprove === true && isServerAutoApprovalEnabled();
     const loopGuard = new AgentLoopGuard();
-    const sessionId = typeof req.body.sessionId === "string" && req.body.sessionId.trim()
-      ? req.body.sessionId.trim()
-      : "default_session";
+    const sessionId = normalizeSessionId(req.body.sessionId);
     const result = await runJarvisAgent(goal, {
+      ...createExecutionContext(autoApprove, loopGuard),
       sessionId,
-      taskId: typeof req.body.taskId === "string" && req.body.taskId.trim() ? req.body.taskId.trim() : undefined,
+      taskId: normalizeTaskId(req.body.taskId) || undefined,
       limits: req.body.limits || {},
-      autoApprove,
-      taskStore,
-      executor: (step, context) => executeWithPolicy(step, { ...context, autoApprove, loopGuard })
+      autoApprove
     });
     res.status(result.success ? 200 : 422).json(result);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message, code: err.code || "JARVIS_RUN_ERROR" });
+  }
+});
+
+app.post("/api/jarvis/resume", async (req, res) => {
+  const taskId = normalizeTaskId(req.body?.taskId);
+  if (!taskId) return res.status(400).json({ success: false, error: "taskId is required" });
+
+  try {
+    const autoApprove = req.body.autoApprove === true && isServerAutoApprovalEnabled();
+    const loopGuard = new AgentLoopGuard();
+    const sessionId = normalizeSessionId(req.body.sessionId);
+    const agentContext = createExecutionContext(autoApprove, loopGuard);
+    const { AutonomousOrchestrator } = require("./autonomous-orchestrator");
+    const orchestrator = new AutonomousOrchestrator({
+      limits: req.body.limits || {},
+      taskStore,
+      executor: agentContext.executor,
+      verifier: req.body.verifier,
+      recovery: req.body.recovery
+    });
+    const result = await orchestrator.resume(taskId, sessionId, {
+      autoApprove,
+      loopGuard
+    });
+    res.status(result.success ? 200 : 422).json(result);
+  } catch (err) {
+    const status = err.code === "TASK_NOT_FOUND" || err.code === "TASK_NOT_RESUMABLE" ? 404 : 500;
+    res.status(status).json({ success: false, error: err.message, code: err.code || "JARVIS_RESUME_ERROR" });
   }
 });
 
