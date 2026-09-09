@@ -100,14 +100,35 @@ class TaskStore {
       const record = this.load(taskId, sessionId);
       if (!record) throw new Error(`Persisted task not found: ${taskId}`);
       const existing = record.operations[operationId];
-      if (existing) return { ...existing, claimed: false };
+      if (existing && existing.state !== "retryable") return { ...existing, claimed: false };
       record.operations[operationId] = {
         state: "started",
-        startedAt: new Date().toISOString(),
-        executionId: metadata.executionId || operationId
+        startedAt: existing?.startedAt || new Date().toISOString(),
+        executionId: metadata.executionId || existing?.executionId || operationId,
+        ...(existing?.retryableAt ? { previousRetryableAt: existing.retryableAt } : {})
       };
       this.writeRecord(record, taskId, sessionId);
       return { ...record.operations[operationId], claimed: true };
+    });
+  }
+
+  markOperationRetryable(taskId, sessionId = "default_session", operationId, error = null) {
+    if (!operationId) throw new Error("Operation id is required.");
+    return this.withLock(taskId, sessionId, () => {
+      const record = this.load(taskId, sessionId);
+      if (!record) throw new Error(`Persisted task not found: ${taskId}`);
+      const existing = record.operations[operationId];
+      if (!existing) throw new Error(`Operation not found: ${operationId}`);
+      if (existing.state === "completed") return { ...existing, claimed: false };
+      record.operations[operationId] = {
+        ...existing,
+        state: "retryable",
+        retryableAt: new Date().toISOString(),
+        errorCode: error?.code || "RETRYABLE_EXECUTOR_ERROR",
+        errorMessage: error?.message || null
+      };
+      this.writeRecord(record, taskId, sessionId);
+      return { ...record.operations[operationId], claimed: false };
     });
   }
 
