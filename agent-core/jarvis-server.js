@@ -10,14 +10,13 @@ const { ToolRegistry } = require("./tool-registry");
 const { AgentLoopGuard } = require("../agent-loop-guard");
 const { TaskStore } = require("./task-store");
 const { AutonomousOrchestrator } = require("./autonomous-orchestrator");
-const { AdvancedRAGMemory } = require("../rag-memory");
+const memory = require("../rag-memory");
 
 const app = express();
 const PORT = Number(process.env.JARVIS_PORT || 3010);
 const HOST = process.env.JARVIS_HOST || "127.0.0.1";
 const registry = new ToolRegistry();
 const taskStore = new TaskStore();
-const memory = new AdvancedRAGMemory();
 
 app.use(express.json({ limit: "2mb" }));
 
