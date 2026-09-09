@@ -4,7 +4,7 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
-const { runJarvisAgent, verifyStep, recover } = require("./jarvis-agent");
+const { runJarvisAgent, createPlan, verifyStep, recover } = require("./jarvis-agent");
 const { executeTool } = require("../autonomous-loop-agent-v7-free");
 const { ToolRegistry } = require("./tool-registry");
 const { AgentLoopGuard } = require("../agent-loop-guard");
@@ -98,7 +98,18 @@ function normalizeSessionId(value) { return typeof value === "string" && value.t
 function normalizeTaskId(value) { return typeof value === "string" && value.trim() ? value.trim() : ""; }
 
 function createExecutionContext(autoApprove, loopGuard) {
-  return { autoApprove, loopGuard, taskStore, memory, executor: (step, context) => executeWithPolicy(step, { ...context, autoApprove, loopGuard }) };
+  return {
+    autoApprove,
+    loopGuard,
+    taskStore,
+    memory,
+    planner: async (goal, context = {}) => {
+      let learnedMemory = "";
+      try { learnedMemory = await memory.buildRagContext(goal, 5); } catch (_) {}
+      return createPlan(goal, { ...context, learnedMemory });
+    },
+    executor: (step, context) => executeWithPolicy(step, { ...context, autoApprove, loopGuard })
+  };
 }
 
 async function executeWithPolicy(step, executionContext = {}) {
@@ -147,7 +158,7 @@ app.post("/api/jarvis/resume", async (req, res) => {
     const autoApprove = req.body.autoApprove === true && isServerAutoApprovalEnabled();
     const loopGuard = new AgentLoopGuard();
     const sessionId = normalizeSessionId(req.body.sessionId);
-    const orchestrator = new AutonomousOrchestrator({ limits: req.body.limits || {}, taskStore, memory, executor: (step, context) => executeWithPolicy(step, { ...context, autoApprove, loopGuard }), verifier: verifyStep, recovery: recover });
+    const orchestrator = new AutonomousOrchestrator({ limits: req.body.limits || {}, taskStore, memory, planner: async (goal, context = {}) => { let learnedMemory = ""; try { learnedMemory = await memory.buildRagContext(goal, 5); } catch (_) {} return createPlan(goal, { ...context, learnedMemory }); }, executor: (step, context) => executeWithPolicy(step, { ...context, autoApprove, loopGuard }), verifier: verifyStep, recovery: recover });
     const result = await orchestrator.resume(taskId, sessionId, { autoApprove, loopGuard, availableTools: registry.list() });
     res.status(result.success ? 200 : 422).json(result);
   } catch (err) {
