@@ -33,6 +33,10 @@ jobs:
         run: node tests/autonomous-orchestrator.test.js
       - name: Run Durable Task Store Regression Suite
         run: node tests/task-store.test.js
+      - name: Run Memory Learning Regression Suite
+        run: node tests/memory-learning.test.js
+      - name: Run Orchestrator Memory Learning Integration Suite
+        run: node tests/orchestrator-memory-learning.test.js
       - name: Run JARVIS Agent Adapter Regression Suite
         run: node tests/jarvis-agent.test.js
       - name: Run JARVIS Agent Integration Regression Suite
