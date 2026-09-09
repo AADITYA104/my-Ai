@@ -161,7 +161,7 @@ assert.notEqual(createIdempotencyKey("session-a", "task-a", 1), createIdempotenc
       recovery: async () => ({ retry: true })
     });
     const idempotentResult = await idempotent.run("idempotent retry", { sessionId: "idempotent-session", taskId: "idempotent-task" });
-    assert.equal(idempotentResult.success, true);
+    assert.equal(idempotentResult.success, true, `idempotent failure: ${JSON.stringify({ state: idempotentResult.state, reason: idempotentResult.reason, results: idempotentResult.results, finalVerification: idempotentResult.finalVerification, ledger: taskStore.load("idempotent-task", "idempotent-session")?.operations })}`);
     assert.equal(idempotentExecutions, 1);
     assert.equal(stepVerifications, 2);
     assert.equal(idempotentResult.results[0].attempts, 2);
