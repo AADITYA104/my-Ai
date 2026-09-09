@@ -190,6 +190,7 @@ class AutonomousOrchestrator {
         this.persist(task, sessionId, plan, results);
 
         let claimedOperation = null;
+        let operationCompleted = false;
         try {
           if (this.taskStore) {
             claimedOperation = this.taskStore.claimOperation(task.id, sessionId, idempotencyKey, { executionId });
@@ -202,11 +203,13 @@ class AutonomousOrchestrator {
 
           if (claimedOperation?.state === "completed") {
             stepResult = claimedOperation.result;
+            operationCompleted = true;
           } else {
             stepResult = await withDeadline(() => this.executor(step, {
               goal, plan, attempt: attempts, recoveryContext, task, deadline, ...context, ...operationContext
             }), deadline, `step ${step.id} execution`);
             if (this.taskStore) this.taskStore.completeOperation(task.id, sessionId, idempotencyKey, stepResult);
+            operationCompleted = true;
           }
 
           task = transition(task, "verifying", `Step ${step.id} execution finished`);
@@ -228,6 +231,15 @@ class AutonomousOrchestrator {
             : { reason: "Verification failed", previousResult: stepResult };
           this.persist(task, sessionId, plan, results, lastVerification?.reason || "Verification failed");
         } catch (error) {
+          if (claimedOperation?.claimed && error.code === "RETRYABLE_EXECUTOR_ERROR" && !operationCompleted && this.taskStore) {
+            try {
+              this.taskStore.markOperationRetryable(task.id, sessionId, idempotencyKey, error);
+            } catch (ledgerError) {
+              const ambiguousError = new Error(`Operation ${idempotencyKey} could not be marked retryable safely: ${ledgerError.message}`);
+              ambiguousError.code = "OPERATION_IN_DOUBT";
+              error = ambiguousError;
+            }
+          }
           if (claimedOperation?.claimed && error.code !== "OPERATION_IN_DOUBT" && error.code !== "RETRYABLE_EXECUTOR_ERROR") {
             const ambiguousError = new Error(`Operation ${idempotencyKey} failed after being claimed; automatic retry is blocked to prevent duplicate side effects.`);
             ambiguousError.code = "OPERATION_IN_DOUBT";
