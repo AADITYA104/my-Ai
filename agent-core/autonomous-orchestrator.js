@@ -44,14 +44,12 @@ function normalizePlan(plan, goal) {
     risk: step.risk || "normal"
   })).filter(step => step.description);
   if (normalized.length === 0) throw new Error("Planner returned no usable steps.");
-
   const ids = new Set();
   for (const step of normalized) {
     const key = String(step.id);
     if (ids.has(key)) throw new Error(`Planner returned duplicate step id: ${step.id}`);
     ids.add(key);
   }
-
   return {
     goal: String(plan.goal || goal).trim(),
     assumptions: Array.isArray(plan.assumptions) ? plan.assumptions : [],
@@ -67,7 +65,6 @@ function withDeadline(promiseOrFactory, deadline, label = "Operation") {
     error.code = "WALL_TIME_EXHAUSTED";
     return Promise.reject(error);
   }
-
   let timer;
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => {
@@ -76,7 +73,6 @@ function withDeadline(promiseOrFactory, deadline, label = "Operation") {
       reject(error);
     }, remaining);
   });
-
   return Promise.race([Promise.resolve().then(promiseOrFactory), timeout]).finally(() => clearTimeout(timer));
 }
 
@@ -103,14 +99,12 @@ class AutonomousOrchestrator {
     if (typeof this.planner !== "function") throw new Error("Planner callback is required.");
     if (typeof this.executor !== "function") throw new Error("Executor callback is required.");
     if (typeof this.verifier !== "function") throw new Error("Verifier callback is required.");
-
     const startedAt = Date.now();
     const deadline = Number.isFinite(this.limits.maxWallTimeMs) && this.limits.maxWallTimeMs >= 0 ? startedAt + this.limits.maxWallTimeMs : Infinity;
     const sessionId = context.sessionId || "default_session";
     let task = createTask(goal, { phase: "planner", startedAt, sessionId: String(sessionId), id: context.taskId });
     let plan;
     this.persist(task, sessionId, null, []);
-
     try {
       plan = this.plan ? normalizePlan(this.plan, goal) : normalizePlan(await withDeadline(() => this.planner(goal, context), deadline, "planning"), goal);
       task = transition(task, "planning", "Plan created");
@@ -135,7 +129,6 @@ class AutonomousOrchestrator {
     if (!record.plan || !Array.isArray(record.plan.steps)) { const error = new Error("Persisted task has no resumable plan."); error.code = "TASK_NOT_RESUMABLE"; throw error; }
     if (record.task.state === "completed") return this.snapshot(record.task, record.plan, record.results, record.reason, record.finalVerification);
     if (record.task.state === "cancelled") { const error = new Error("Cancelled tasks cannot be resumed."); error.code = "TASK_NOT_RESUMABLE"; throw error; }
-
     let task = record.task;
     if (isTerminal(task.state)) task = transition(task, "planning", "Resuming persisted task");
     else if (task.state === "verifying") task = transition(task, "executing", "Resuming persisted task");
@@ -153,7 +146,6 @@ class AutonomousOrchestrator {
     const results = [...initialResults];
     const maxRetries = this.limits.maxRetries ?? 3;
     const completedStepIds = new Set(results.map(entry => entry && entry.step && entry.step.id));
-
     for (const step of plan.steps) {
       if (completedStepIds.has(step.id)) continue;
       if (Date.now() >= deadline) {
@@ -167,14 +159,12 @@ class AutonomousOrchestrator {
         this.persist(task, sessionId, plan, results, budget.reason);
         return this.snapshot(task, plan, results, budget.reason);
       }
-
       let attempts = 0;
       let stepResult = null;
       let lastVerification = null;
       let recoveryContext = null;
       let stepFinished = false;
       const idempotencyKey = createIdempotencyKey(sessionId, task.id, step.id, "execute");
-
       while (attempts < maxRetries) {
         if (Date.now() >= deadline) {
           task = transition(task, "blocked", "Wall-clock budget exhausted");
@@ -188,7 +178,6 @@ class AutonomousOrchestrator {
         const executionId = createOperationId(sessionId, task.id, step.id, attempts, "execute");
         const operationContext = { executionId, operationId: executionId, idempotencyKey };
         this.persist(task, sessionId, plan, results);
-
         let claimedOperation = null;
         let operationCompleted = false;
         try {
@@ -200,7 +189,6 @@ class AutonomousOrchestrator {
               throw error;
             }
           }
-
           if (claimedOperation?.state === "completed") {
             stepResult = claimedOperation.result;
             operationCompleted = true;
@@ -211,7 +199,6 @@ class AutonomousOrchestrator {
             if (this.taskStore) this.taskStore.completeOperation(task.id, sessionId, idempotencyKey, stepResult);
             operationCompleted = true;
           }
-
           task = transition(task, "verifying", `Step ${step.id} execution finished`);
           lastVerification = await withDeadline(() => this.verifier(step, stepResult, {
             goal, plan, attempt: attempts, task, deadline, ...context, ...operationContext
@@ -240,7 +227,7 @@ class AutonomousOrchestrator {
               error = ambiguousError;
             }
           }
-          if (claimedOperation?.claimed && error.code !== "OPERATION_IN_DOUBT" && error.code !== "RETRYABLE_EXECUTOR_ERROR") {
+          if (claimedOperation?.claimed && !operationCompleted && error.code !== "OPERATION_IN_DOUBT" && error.code !== "RETRYABLE_EXECUTOR_ERROR") {
             const ambiguousError = new Error(`Operation ${idempotencyKey} failed after being claimed; automatic retry is blocked to prevent duplicate side effects.`);
             ambiguousError.code = "OPERATION_IN_DOUBT";
             error = ambiguousError;
@@ -253,14 +240,17 @@ class AutonomousOrchestrator {
               ? await withDeadline(() => this.recovery(step, stepResult, lastVerification, { goal, plan, attempt: attempts, task, deadline, error, ...context, executionId, operationId: recoveryId }), deadline, `step ${step.id} recovery`)
               : { reason: error.message };
           } catch (recoveryError) {
+            if (recoveryError.code === "WALL_TIME_EXHAUSTED") {
+              lastVerification = { pass: false, reason: recoveryError.message, code: recoveryError.code };
+              break;
+            }
             recoveryContext = { reason: error.message, recoveryError: recoveryError.message };
           }
           this.persist(task, sessionId, plan, results, error.message);
         }
       }
-
       if (!stepFinished) {
-        if (Date.now() >= deadline || lastVerification?.reason?.startsWith("Wall-clock budget exhausted")) {
+        if (Date.now() >= deadline || lastVerification?.code === "WALL_TIME_EXHAUSTED" || lastVerification?.reason?.startsWith("Wall-clock budget exhausted")) {
           task = transition(task, "blocked", "Wall-clock budget exhausted");
           this.persist(task, sessionId, plan, results, "Wall-clock budget exhausted");
           return this.snapshot(task, plan, results, "Wall-clock budget exhausted");
@@ -277,7 +267,6 @@ class AutonomousOrchestrator {
         return this.snapshot(task, plan, results, reason);
       }
     }
-
     task = transition(task, "verifying", "All planned steps executed");
     this.persist(task, sessionId, plan, results);
     let finalVerification;
