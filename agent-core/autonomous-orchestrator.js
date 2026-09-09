@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const { createTask, transition, canContinue, isTerminal } = require("./task-state-machine");
 const { DEFAULTS } = require("./autonomy-policy");
 const { TaskStore } = require("./task-store");
+const { createMemoryLearning } = require("./memory-learning");
 
 const NON_RETRYABLE_ERROR_CODES = new Set([
   "APPROVAL_REQUIRED",
@@ -85,6 +86,7 @@ class AutonomousOrchestrator {
     this.verifier = options.verifier;
     this.recovery = options.recovery;
     this.taskStore = options.taskStore instanceof TaskStore ? options.taskStore : null;
+    this.memoryLearning = options.memoryLearning || (options.memory ? createMemoryLearning({ memory: options.memory }) : null);
   }
 
   persist(task, sessionId, plan, results, reason = null, finalVerification = null) {
@@ -294,7 +296,11 @@ class AutonomousOrchestrator {
   }
 
   snapshot(task, plan, results, reason = null, finalVerification = null) {
-    return { success: task.state === "completed", state: task.state, task, plan, results, reason, finalVerification };
+    const snapshot = { success: task.state === "completed", state: task.state, task, plan, results, reason, finalVerification };
+    if (this.memoryLearning) {
+      try { this.memoryLearning.learn(snapshot); } catch (_) { /* learning is best-effort and never changes task outcome */ }
+    }
+    return snapshot;
   }
 }
 
