@@ -10,12 +10,14 @@ const { ToolRegistry } = require("./tool-registry");
 const { AgentLoopGuard } = require("../agent-loop-guard");
 const { TaskStore } = require("./task-store");
 const { AutonomousOrchestrator } = require("./autonomous-orchestrator");
+const { AdvancedRAGMemory } = require("../rag-memory");
 
 const app = express();
 const PORT = Number(process.env.JARVIS_PORT || 3010);
 const HOST = process.env.JARVIS_HOST || "127.0.0.1";
 const registry = new ToolRegistry();
 const taskStore = new TaskStore();
+const memory = new AdvancedRAGMemory();
 
 app.use(express.json({ limit: "2mb" }));
 
@@ -96,7 +98,7 @@ function normalizeSessionId(value) { return typeof value === "string" && value.t
 function normalizeTaskId(value) { return typeof value === "string" && value.trim() ? value.trim() : ""; }
 
 function createExecutionContext(autoApprove, loopGuard) {
-  return { autoApprove, loopGuard, taskStore, executor: (step, context) => executeWithPolicy(step, { ...context, autoApprove, loopGuard }) };
+  return { autoApprove, loopGuard, taskStore, memory, executor: (step, context) => executeWithPolicy(step, { ...context, autoApprove, loopGuard }) };
 }
 
 async function executeWithPolicy(step, executionContext = {}) {
@@ -145,7 +147,7 @@ app.post("/api/jarvis/resume", async (req, res) => {
     const autoApprove = req.body.autoApprove === true && isServerAutoApprovalEnabled();
     const loopGuard = new AgentLoopGuard();
     const sessionId = normalizeSessionId(req.body.sessionId);
-    const orchestrator = new AutonomousOrchestrator({ limits: req.body.limits || {}, taskStore, executor: (step, context) => executeWithPolicy(step, { ...context, autoApprove, loopGuard }), verifier: verifyStep, recovery: recover });
+    const orchestrator = new AutonomousOrchestrator({ limits: req.body.limits || {}, taskStore, memory, executor: (step, context) => executeWithPolicy(step, { ...context, autoApprove, loopGuard }), verifier: verifyStep, recovery: recover });
     const result = await orchestrator.resume(taskId, sessionId, { autoApprove, loopGuard, availableTools: registry.list() });
     res.status(result.success ? 200 : 422).json(result);
   } catch (err) {
@@ -156,4 +158,4 @@ app.post("/api/jarvis/resume", async (req, res) => {
 
 function startServer(port = PORT, host = HOST) { return app.listen(port, host, () => console.log(`[JARVIS] Autonomous API listening on http://${host}:${port}`)); }
 if (require.main === module) startServer();
-module.exports = { app, startServer, executeWithPolicy, registry, isServerAutoApprovalEnabled, taskStore, adaptLegacyToolInput, resolveWorkspacePath, KNOWN_TOOLS };
+module.exports = { app, startServer, executeWithPolicy, registry, isServerAutoApprovalEnabled, taskStore, adaptLegacyToolInput, resolveWorkspacePath, KNOWN_TOOLS, memory };
