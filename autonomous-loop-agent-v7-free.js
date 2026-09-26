@@ -50,6 +50,9 @@ try {
   ragModule = require("./rag-memory");
 } catch (_) {}
 
+// Karpathy Cognitive Guard — enforces Think-Before-Coding, Simplicity, Surgical Changes
+const karpathyGuard = require("./karpathy-guard");
+
 // Scope creep detector — flags file writes that stray beyond task intent
 let scopeGuard = { checkScope: () => ({ inScope: true, flags: [] }) };
 try { scopeGuard = require("./scope-guard"); } catch (_) {}
@@ -922,8 +925,15 @@ function buildSkillEngineGuidance(subtaskDescription) {
 // [8] BOOTSTRAP & CRITIC
 // ===========================================================================
 async function bootstrap(goal) {
-  console.log("\n[BOOTSTRAP] Decomposing goal into structured plan...");
-  const system = 'Break the goal into 3-6 concrete verifiable subtasks.\nClassify each planning decision as:\n  MECHANICAL     - one clear answer, auto-decide silently\n  TASTE          - multiple valid approaches, auto-decide but note it\n  USER_CHALLENGE - conflicts with user\'s stated goal; NEVER auto-decide\n\nRespond ONLY with JSON:\n{"goal":"...","subtasks":[{"id":1,"description":"...","doneWhen":"..."}],"decisions":[{"type":"MECHANICAL|TASTE|USER_CHALLENGE","note":"..."}]}';
+  console.log("\n[BOOTSTRAP] Decomposing goal into structured plan (Karpathy Goal-Driven)...");
+  const system = 'Break the goal into 3-6 concrete verifiable subtasks.\n' +
+    karpathyGuard.KARPATHY_GOAL_DRIVEN + '\n\n' +
+    'CRITICAL: Each subtask MUST have a concrete, testable "doneWhen" criterion.\n' +
+    'Transform vague goals into verifiable checks:\n' +
+    '  "Add validation" → doneWhen: "Test with invalid inputs passes"\n' +
+    '  "Fix the bug" → doneWhen: "Reproduction test passes"\n' +
+    '  "Refactor X" → doneWhen: "Existing tests pass before and after"\n\n' +
+    'Classify each planning decision as:\n  MECHANICAL     - one clear answer, auto-decide silently\n  TASTE          - multiple valid approaches, auto-decide but note it\n  USER_CHALLENGE - conflicts with user\'s stated goal; NEVER auto-decide\n\nRespond ONLY with JSON:\n{"goal":"...","subtasks":[{"id":1,"description":"...","doneWhen":"..."}],"decisions":[{"type":"MECHANICAL|TASTE|USER_CHALLENGE","note":"..."}]}';
   const res = await callLLM([{ role: "user", content: `Goal: ${goal}` }], system);
   const match = res.text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("Bootstrap failed to produce valid JSON plan: " + res.text);
@@ -1015,7 +1025,17 @@ async function runActorWithNativeTools(subtask, memoryContext, matchedSkill, rag
     : "";
   const learnings = buildLearningsContext();
   const completionBlock = "\nWhen finished, end with one of: DONE / DONE_WITH_CONCERNS / BLOCKED / NEEDS_CONTEXT\n";
-  const system = `You are an autonomous execution agent. Session canary: ${SESSION_CANARY}\nComplete the subtask using available tools.\n\nPrior Learnings:\n${memoryContext || "(none yet)"}\n${learnings}${skillBlock}${ragContext || ""}${rcaContext ? "\nROOT CAUSE ANALYSIS:\n" + rcaContext + "\n" : ""}${completionBlock}`;
+
+  // Karpathy Cognitive Guard — smart injection based on subtask type
+  const karpathyBlock = karpathyGuard.getKarpathyGuidance("coding");
+
+  // Ambiguity check — if the subtask is ambiguous, prepend a warning
+  const ambiguity = karpathyGuard.detectAmbiguity(subtask.description);
+  const ambiguityWarning = ambiguity.isAmbiguous
+    ? `\n⚠️ [KARPATHY AMBIGUITY ALERT] ${ambiguity.recommendation}\nFlagged patterns: ${ambiguity.flags.join(", ")}\nSurface your assumptions before writing any code.\n`
+    : "";
+
+  const system = `You are an autonomous execution agent. Session canary: ${SESSION_CANARY}\nComplete the subtask using available tools.\n${karpathyBlock}${ambiguityWarning}\nPrior Learnings:\n${memoryContext || "(none yet)"}\n${learnings}${skillBlock}${ragContext || ""}${rcaContext ? "\nROOT CAUSE ANALYSIS:\n" + rcaContext + "\n" : ""}${completionBlock}`;
 
   const goalHeader = parentGoal ? `[MASTER GOAL: "${parentGoal}"]\n` : "";
   const initialContent = `${goalHeader}[ACTIVE SUBTASK ${subtask.id}]: ${subtask.description}\n[DONE CRITERIA]: ${subtask.doneWhen}`;

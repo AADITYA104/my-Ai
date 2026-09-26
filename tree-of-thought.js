@@ -12,6 +12,7 @@
 const { callUniversalLLM } = require("./llm-providers");
 const skillEngine = require("./unified-skill-engine");
 const { sessionStore } = require("./session-store");
+const karpathyGuard = require("./karpathy-guard");
 
 /**
  * Executes a 3-Branch Tree-of-Thought reasoning cycle
@@ -145,6 +146,9 @@ Synthesize the final, 100% complete production solution for Boss.
 Winning Strategy: [${bestBranch.id}] "${bestBranch.strategy_name}" (Score: ${bestBranch.score}/100)
 Auditor Recommendations: ${bestBranch.critique}
 Original Problem: ${problem}
+
+${karpathyGuard.KARPATHY_SIMPLICITY_FIRST}
+${karpathyGuard.KARPATHY_SURGICAL_CHANGES}
 
 Rules:
 - Deliver complete, production-ready code or plan with zero placeholders.

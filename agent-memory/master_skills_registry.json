@@ -1,5 +1,5 @@
 {
-  "total_skills": 880,
+  "total_skills": 881,
   "version": "2026.4",
   "last_updated": "2026-08-29",
   "categories": {
@@ -6174,6 +6174,13 @@
       "description": "Chunked N-D arrays for cloud storage (Zarr-Python 3). Compressed arrays, parallel I/O, S3/GCS via fsspec, NumPy/Dask/Xarray compatible, for large-scale scientific computing pipelines.",
       "path": "../.agents/skills/zarr-python/SKILL.md",
       "content_preview": "---\nname: zarr-python\ndescription: Chunked N-D arrays for cloud storage (Zarr-Python 3). Compressed arrays, parallel I/O, S3/GCS via fsspec, NumPy/Dask/Xarray compatible, for large-scale scientific computing pipelines.\nallowed-tools: Read Write Edit Bash\nlicense: MIT license\ncompatibility: Requires Python 3.12+ and zarr 3.x. Cloud I/O needs zarr[remote] plus pinned s3fs or gcsfs. Legacy Zarr v2 workflows need exact 2.x pins on older Python.\nmetadata:\n  version: \"1.2\"\n  skill-author: K-Dense Inc."
+    },
+    {
+      "name": "andrej-karpathy",
+      "category": "coding_architecture",
+      "description": "Andrej Karpathy's 4 behavioral guidelines to reduce LLM coding mistakes: Think Before Coding (surface assumptions, don't guess), Simplicity First (minimum code, nothing speculative), Surgical Changes (only touch what you must), Goal-Driven Execution (define success criteria, loop until verified).",
+      "path": "../.agents/skills/andrej-karpathy/SKILL.md",
+      "content_preview": "---\nname: karpathy-guidelines\ndescription: Behavioral guidelines to reduce common LLM coding mistakes. Use when writing, reviewing, or refactoring code to avoid overcomplication, make surgical changes, surface assumptions, and define verifiable success criteria.\nlicense: MIT\n---\n\n# Karpathy Guidelines\n\n## 1. Think Before Coding\nDon't assume. Don't hide confusion. Surface tradeoffs.\n\n## 2. Simplicity First\nMinimum code that solves the problem. Nothing speculative.\n\n## 3. Surgical Changes\nTouch only what you must. Clean up only your own mess.\n\n## 4. Goal-Driven Execution\nDefine success criteria. Loop until verified."
     }
   ]
 }

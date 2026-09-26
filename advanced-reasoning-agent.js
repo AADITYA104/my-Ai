@@ -12,6 +12,7 @@ const { callUniversalLLM } = require("./llm-providers");
 const skillEngine = require("./unified-skill-engine");
 const sessionContinuity = require("./session-continuity");
 const { getTaskConfig, injectRecencyConstraints } = require("./task-classifier");
+const karpathyGuard = require("./karpathy-guard");
 
 async function solveWithCritic(prompt, doneCriteria = "Must be 100% complete, bug-free, and satisfy the user's request", maxAttempts = 3) {
   console.log(`\n🎯 [REASONING SWARM] Task: ${prompt}`);
@@ -39,6 +40,8 @@ async function solveWithCritic(prompt, doneCriteria = "Must be 100% complete, bu
 Provide a complete, production-ready, 100% working solution.
 Follow Ponytail minimal-diff rules (fix root causes, no unneeded boilerplate).
 Never truncate code or output.
+${karpathyGuard.KARPATHY_THINK_BEFORE_CODING}
+${karpathyGuard.KARPATHY_SIMPLICITY_FIRST}
 ${skillPromptSnippet}
 ${feedback ? `\n[CRITICAL]: Previous attempt failed with critique:\n${feedback}\nFix these issues carefully.` : ""}`;
 

@@ -26,6 +26,7 @@ const airllmOptimizer = require("../../airllm-optimizer");
 const intelligenceLoop = require("../../intelligence-loop");
 const todoManager = require("../../todo-manager");
 const { sessionStore } = require("../../session-store");
+const karpathyGuard = require("../../karpathy-guard");
 
 /**
  * Supercharged Cognitive Brain Dispatcher
@@ -153,10 +154,18 @@ async function sendToBrain(userText, options = {}) {
     reply = await ollamaFallback(text);
   } else {
     try {
+      // Smart Karpathy injection based on intent
+      const karpathyForIntent = (intent === "coding_mission" || intent === "deep_reasoning_task")
+        ? karpathyGuard.getKarpathyGuidance("coding")
+        : (intent === "research_investigation")
+          ? karpathyGuard.getKarpathyGuidance("research")
+          : karpathyGuard.KARPATHY_THINK_BEFORE_CODING;
+
       const systemPrompt = `You are ULTRON, the supreme autonomous AI assistant, architect, and sovereign engineering core to Boss.
 Address the user as "Boss" in every reply.
 Supreme Multi-lingual Fluency: Natural Gujarati (ગુજરાતી), Hindi (हिन्दी), and English.
 Be sharp, protective, highly capable, and definitive.
+${karpathyForIntent}
 ${ragContext ? `\nMemory context:\n${ragContext}` : ""}
 ${knowledgeGrounding}
 ${todoPrompt}`;
