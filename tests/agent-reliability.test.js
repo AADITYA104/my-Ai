@@ -233,5 +233,6 @@ console.log(`\n======================================================`);
 console.log(`RESULTS: ${passed} PASSED, ${failed} FAILED`);
 console.log(`======================================================\n`);
 
-process.exit(failed > 0 ? 1 : 0);
-
+if (require.main === module) {
+  process.exit(failed > 0 ? 1 : 0);
+}

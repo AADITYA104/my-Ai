@@ -60,10 +60,12 @@ async function main() {
   });
 
   await check("RAG fallback", async () => {
-    await rag.ingestText("local qwen ollama impeccable ruflo gstack health check", { source: "health-check-local" });
-    const hits = await rag.semanticSearch("qwen ollama gstack", 2);
+    rag.store("health-check", "local qwen ollama impeccable ruflo gstack health check", ["health-check"], "health-check-local");
+    const hits = await rag.search("qwen ollama gstack", 2);
     if (!hits.length) throw new Error("No RAG hits");
-    return `${hits.length} hit(s), top source: ${hits[0].metadata.source}`;
+    const topSource = hits[0].source || hits[0].topic || "health-check-local";
+    try { rag.delete("health-check"); } catch (_) {}
+    return `${hits.length} hit(s), top source: ${topSource}`;
   });
 
   for (const item of report) {
@@ -73,7 +75,11 @@ async function main() {
   if (report.some(item => !item.ok)) process.exit(1);
 }
 
-main().catch(err => {
-  console.error(err.stack || err.message);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch(err => {
+    console.error(err.stack || err.message);
+    process.exit(1);
+  });
+}
+
+module.exports = { main };

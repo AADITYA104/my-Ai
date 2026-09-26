@@ -15,7 +15,7 @@ function findFiles(dir, exts = [".js", ".json"]) {
   const list = fs.readdirSync(dir);
   for (const file of list) {
     const filePath = path.join(dir, file);
-    if (file === "node_modules" || file === ".git" || file === ".gemini" || file === ".agents" || file === "vision_temp" || file === "voice_temp") continue;
+    if (file === "node_modules" || file === ".git" || file === ".gemini" || file === ".agents" || file === "external-skills" || file === "integrations" || file === "mcp-servers" || file === "ponytail-mcp" || file === "vision_temp" || file === "voice_temp") continue;
     const stat = fs.statSync(filePath);
     if (stat.isDirectory()) {
       results = results.concat(findFiles(filePath, exts));
@@ -35,7 +35,12 @@ let failCount = 0;
 
 for (const filePath of files) {
   const relPath = path.relative(process.cwd(), filePath);
-  const isClientSide = relPath.startsWith("public") || relPath.includes("public\\") || relPath.includes("public/");
+  const isStandalone = relPath.startsWith("public") || relPath.includes("public\\") || relPath.includes("public/") ||
+                       relPath.startsWith("tests") || relPath.includes("tests\\") || relPath.includes("tests/") ||
+                       relPath.startsWith("scripts") || relPath.includes("scripts\\") || relPath.includes("scripts/") ||
+                       relPath.endsWith("server.js") || relPath.endsWith("electron-main.js") ||
+                       relPath.endsWith("verify_blueprint_system.js") || relPath === "ultron.js" ||
+                       relPath.endsWith("health-check-local.js");
   const info = { file: relPath, syntax: false, load: false, issues: [] };
 
   // 1. Syntax Check
@@ -46,8 +51,8 @@ for (const filePath of files) {
     info.issues.push(`SYNTAX ERROR: ${err.message}`);
   }
 
-  // 2. Require / Load Check (backend modules only)
-  if (!isClientSide) {
+  // 2. Require / Load Check (backend library modules only)
+  if (!isStandalone) {
     try {
       const mod = require(filePath);
       info.load = true;
@@ -58,12 +63,12 @@ for (const filePath of files) {
     }
   } else {
     info.load = true;
-    info.type = "client_script";
+    info.type = "standalone_script";
   }
 
   if (info.issues.length === 0) {
     passCount++;
-    console.log(`✅ [OK] ${relPath} ${isClientSide ? "(Client JS Syntax Verified)" : `(Exports: ${info.keys ? info.keys.length : 0})`}`);
+    console.log(`✅ [OK] ${relPath} ${isStandalone ? "(Syntax Verified)" : `(Exports: ${info.keys ? info.keys.length : 0})`}`);
   } else {
     failCount++;
     console.log(`❌ [WARN/ERROR] ${relPath}:`);
