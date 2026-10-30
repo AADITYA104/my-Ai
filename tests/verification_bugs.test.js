@@ -11,13 +11,15 @@ console.log("==================================================");
 
 // Fix 1: autostart-config.js
 console.log("\n[TEST 1] Testing autostart-config.js...");
-const { installAutoStart } = require("../service/autostart-config");
+const { installAutoStart, uninstallAutoStart } = require("../service/autostart-config");
 const autostartRes = installAutoStart();
 assert.strictEqual(autostartRes.success, true, "Autostart install should return success: true");
 assert.ok(fs.existsSync(autostartRes.path), "Autostart file must exist on disk");
 const vbsContent = fs.readFileSync(autostartRes.path, "utf-8");
 assert.ok(vbsContent.includes("ultron.js"), "VBS script must reference ultron.js");
-console.log("✅ [TEST 1 PASSED] Autostart VBS successfully written and verified on disk.");
+uninstallAutoStart();
+assert.ok(!fs.existsSync(autostartRes.path), "Autostart file must be cleaned up from startup folder");
+console.log("✅ [TEST 1 PASSED] Autostart VBS successfully written, verified, and cleaned up.");
 
 // Fix 2: ultron.js syntax & UI launcher
 console.log("\n[TEST 2] Testing ultron.js syntax & structure...");

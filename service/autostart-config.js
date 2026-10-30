@@ -100,10 +100,64 @@ WantedBy=multi-user.target
   return { success: false, error: `Unsupported platform: ${platform}` };
 }
 
+function uninstallAutoStart() {
+  const platform = process.platform;
+  console.log(`🔧 [AUTOSTART] Removing Ultron background auto-start for ${platform}...`);
+
+  if (platform === "win32") {
+    try {
+      const startupFolder = path.join(process.env.APPDATA || "", "Microsoft", "Windows", "Start Menu", "Programs", "Startup");
+      const vbsDest = path.join(startupFolder, "ultron-autostart.vbs");
+      if (fs.existsSync(vbsDest)) {
+        fs.unlinkSync(vbsDest);
+        console.log(`✅ [WINDOWS AUTOSTART] Removed successfully from:\n   ${vbsDest}`);
+      } else {
+        console.log(`ℹ️ [WINDOWS AUTOSTART] Not present in startup folder.`);
+      }
+      return { success: true };
+    } catch (err) {
+      console.error(`❌ [WINDOWS AUTOSTART REMOVE ERROR] ${err.message}`);
+      return { success: false, error: err.message };
+    }
+  }
+
+  if (platform === "linux") {
+    const servicePath = "/etc/systemd/system/ultron.service";
+    try {
+      execSync("systemctl stop ultron && systemctl disable ultron", { stdio: "pipe" });
+      if (fs.existsSync(servicePath)) fs.unlinkSync(servicePath);
+      execSync("systemctl daemon-reload", { stdio: "pipe" });
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  if (platform === "darwin") {
+    const launchAgentsDir = path.join(process.env.HOME || "", "Library", "LaunchAgents");
+    const plistPath = path.join(launchAgentsDir, "com.ultron.plist");
+    try {
+      execSync(`launchctl unload "${plistPath}"`, { stdio: "pipe" });
+      if (fs.existsSync(plistPath)) fs.unlinkSync(plistPath);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  return { success: false, error: `Unsupported platform: ${platform}` };
+}
+
 if (require.main === module) {
-  installAutoStart();
+  const arg = process.argv[2];
+  if (arg === "uninstall" || arg === "disable" || arg === "stop") {
+    uninstallAutoStart();
+  } else {
+    installAutoStart();
+  }
 }
 
 module.exports = {
-  installAutoStart
+  installAutoStart,
+  uninstallAutoStart
 };
